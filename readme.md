@@ -250,8 +250,3 @@
 | `cron` | `string` | ⏰ 目标专属 Cron 定时表达式（留空则遵循全局轮询周期 `checkInterval`） |
 | `enabled` | `boolean` | ✅ 独立启用开关，关闭后跳过该条目标 |
 
----
-
-## 📄 开源许可
-
-[MIT License](LICENSE)
