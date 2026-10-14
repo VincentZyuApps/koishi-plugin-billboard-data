@@ -9,13 +9,13 @@ export interface BroadcastTarget {
   cron?: string
 }
 
-export type OutputFormat = 'text' | 'takumi' | 'puppeteer' | 'qq_markdown'
+export type OutputFormat = 'text' | 'takumi' | 'puppeteer' | 'md-style' | 'md-table'
 export type TakumiFontMode = 'release' | 'custom' | 'none'
 export type PuppeteerFontMode = 'npm' | 'release' | 'custom' | 'none'
 export type TextDetailedMode = 'standard' | 'simple'
 export type TakumiDetailedMode = 'standard' | 'simple'
 export type PuppeteerDetailedMode = 'standard' | 'simple'
-export type QQMarkdownDetailedMode = 'card' | 'table'
+export type QQMarkdownDetailedMode = 'standard' | 'simple'
 
 export type DataSourceMode = 'crawler' | 'jsdelivr' | 'github'
 export type NetworkMode = 'direct' | 'proxy' | 'ghproxy'
@@ -95,7 +95,11 @@ export interface Config {
   broadcastSources: BillboardSource[]
   broadcastTargets: BroadcastTarget[]
   checkInterval: number
+
+  // 🐛 调试设置
+  verboseConsoleLog: boolean
 }
+
 
 import { Schema } from 'koishi'
 
@@ -111,8 +115,8 @@ export const Config: Schema<Config> = Schema.intersect([
 
   Schema.object({
     defaultSource: Schema.union([
-      Schema.const('bilibili' as BillboardSource).description('📺 Bili Board 术力口周榜 (B站本土周榜)'),
-      Schema.const('niconico' as BillboardSource).description('🎵 ニコニコ VOCALOID SONGS TOP20 (日本N站周榜)'),
+      Schema.const('bilibili' as BillboardSource).description('【 📺 bilibili 】 Bili Board 术力口周榜 (B站本土周榜)'),
+      Schema.const('niconico' as BillboardSource).description('【 🎵 niconico 】 ニコニコ VOCALOID SONGS TOP20 (日本N站周榜)'),
     ])
       .role('radio')
       .default('bilibili')
@@ -123,14 +127,14 @@ export const Config: Schema<Config> = Schema.intersect([
     dataSourceList: Schema.array(Schema.object({
       enabled: Schema.boolean().default(true).description('是否启用'),
       mode: Schema.union([
-        Schema.const('crawler' as DataSourceMode).description('🕷️ 本地直接爬取 (Bilibili 专栏)'),
-        Schema.const('jsdelivr' as DataSourceMode).description('⚡ jsDelivr CDN 静态归档'),
-        Schema.const('github' as DataSourceMode).description('🐙 GitHub Raw 静态源'),
+        Schema.const('crawler' as DataSourceMode).description('【 🕷️ crawler 】 本地直接爬取 (Bilibili 专栏)'),
+        Schema.const('jsdelivr' as DataSourceMode).description('【 ⚡ jsdelivr 】 jsDelivr CDN 静态归档'),
+        Schema.const('github' as DataSourceMode).description('【 🐙 github 】 GitHub Raw 静态源'),
       ]).role('radio').default('crawler').description('模式'),
       network: Schema.union([
-        Schema.const('proxy' as NetworkMode).description('🚪 走本地代理 (需开启全局代理，否则直连)'),
-        Schema.const('direct' as NetworkMode).description('🌐 强制直连'),
-        Schema.const('ghproxy' as NetworkMode).description('🔗 走 GitHub 公网反代 (仅 GitHub 生效)'),
+        Schema.const('proxy' as NetworkMode).description('【 🚪 proxy 】 走本地代理 (需开启全局代理，否则直连)'),
+        Schema.const('direct' as NetworkMode).description('【 🌐 direct 】 强制直连'),
+        Schema.const('ghproxy' as NetworkMode).description('【 🔗 ghproxy 】 走 GitHub 公网反代 (仅 GitHub 生效)'),
       ]).role('radio').default('direct').description('网络通道'),
     }))
       .role('table')
@@ -187,8 +191,8 @@ export const Config: Schema<Config> = Schema.intersect([
 
   Schema.object({
     cacheBackend: Schema.union([
-      Schema.const('database' as CacheBackend).description('🗄️ Database 数据库持久化（推荐，无服务时自动降级内存）'),
-      Schema.const('memory' as CacheBackend).description('🧠 纯内存 Map（进程重启即清空，绝不读写数据库）'),
+      Schema.const('database' as CacheBackend).description('【 🗄️ database 】 Database 数据库持久化（推荐，无服务时自动降级内存）'),
+      Schema.const('memory' as CacheBackend).description('【 🧠 memory 】 纯内存 Map（进程重启即清空，绝不读写数据库）'),
     ])
       .role('radio')
       .default('database')
@@ -229,21 +233,23 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     outputFormats: Schema.array(
       Schema.union([
-        Schema.const('text' as OutputFormat).description('📝 纯文本消息'),
-        Schema.const('takumi' as OutputFormat).description('⚡ Takumi WASM 渲染出图（B站粉蓝极速轻量看板）'),
-        Schema.const('puppeteer' as OutputFormat).description('🎨 Puppeteer 网页出图（高保真精美海报）'),
-        Schema.const('qq_markdown' as OutputFormat).description('📊 QQ 原生 Markdown（含蓝字外链跳转，仅在 qq 平台生效）'),
+        Schema.const('text' as OutputFormat).description('【 📝 text 】 纯文本消息'),
+        Schema.const('takumi' as OutputFormat).description('【 ⚡ takumi 】 Takumi WASM 渲染出图（B站粉蓝极速轻量看板）'),
+        Schema.const('puppeteer' as OutputFormat).description('【 🎨 puppeteer 】 Puppeteer 网页出图（高保真精美海报）'),
+        Schema.const('md-style' as OutputFormat).description('【 💫 md-style 】 QQ 原生 Markdown 卡片流式风格（含蓝字外链跳转，仅在 QQ 官bot 平台生效）'),
+        Schema.const('md-table' as OutputFormat).description('【 📊 md-table 】 QQ 原生 Markdown 紧凑表格模式（含直达播放链接，仅在 QQ 官bot 平台生效）'),
       ])
     )
       .role('checkbox')
-      .default(['text', 'takumi', 'puppeteer', 'qq_markdown'])
-      .description('📤 周榜消息返回格式（支持多选，默认全部勾选；QQ Markdown 仅在 qq 平台生效）'),
+      .default(['takumi', 'puppeteer', 'md-style', 'md-table'])
+      .description('📤 周榜消息返回格式（支持多选，默认勾选图片与 QQ Markdown，不勾选纯文本；QQ Markdown 仅在 QQ 官bot 平台生效）'),
   }).description('📤 消息输出格式'),
+
 
   Schema.object({
     textDetailedMode: Schema.union([
-      Schema.const('standard' as TextDetailedMode).description('📋 详细排版（展示原视频标题、上传者、时长、播放/弹幕/点赞数据等）'),
-      Schema.const('simple' as TextDetailedMode).description('⚡ 极简排版（仅展示排名、歌曲名与 BV 号）'),
+      Schema.const('standard' as TextDetailedMode).description('【 📋 standard 】 详细排版（展示原视频标题、上传者、时长、播放/弹幕/点赞数据等）'),
+      Schema.const('simple' as TextDetailedMode).description('【 ⚡ simple 】 极简排版（仅展示排名、歌曲名与 BV 号）'),
     ])
       .role('radio')
       .default('standard')
@@ -255,9 +261,9 @@ export const Config: Schema<Config> = Schema.intersect([
 
   Schema.object({
     takumiFontMode: Schema.union([
-      Schema.const('release' as TakumiFontMode).description('📥 Gitee / GitHub Release 下载（推荐，保存至 data/fonts）'),
-      Schema.const('custom' as TakumiFontMode).description('📁 本地自定义字体路径'),
-      Schema.const('none' as TakumiFontMode).description('🚫 不指定字体（使用系统环境内置字体）'),
+      Schema.const('release' as TakumiFontMode).description('【 📥 release 】 Gitee / GitHub Release 下载（推荐，保存至 data/fonts）'),
+      Schema.const('custom' as TakumiFontMode).description('【 📁 custom 】 本地自定义字体路径'),
+      Schema.const('none' as TakumiFontMode).description('【 🚫 none 】 不指定字体（使用系统环境内置字体）'),
     ])
       .role('radio')
       .default('release')
@@ -269,8 +275,8 @@ export const Config: Schema<Config> = Schema.intersect([
       .default(true)
       .description('🖼️ 是否每首歌曲都展示封面图（开启时 TOP 2~N 列表项也附带微缩封面图）'),
     takumiDetailedMode: Schema.union([
-      Schema.const('standard' as TakumiDetailedMode).description('📋 完整看板（展示原视频标题、UP 主昵称/头像、时长及播放全量指标）'),
-      Schema.const('simple' as TakumiDetailedMode).description('⚡ 极简看板（仅保留排位、封面与曲目名称）'),
+      Schema.const('standard' as TakumiDetailedMode).description('【 📋 standard 】 完整看板（展示原视频标题、UP 主昵称/头像、时长及播放全量指标）'),
+      Schema.const('simple' as TakumiDetailedMode).description('【 ⚡ simple 】 极简看板（仅保留排位、封面与曲目名称）'),
     ])
       .role('radio')
       .default('standard')
@@ -289,10 +295,10 @@ export const Config: Schema<Config> = Schema.intersect([
 
   Schema.object({
     puppeteerFontMode: Schema.union([
-      Schema.const('npm' as PuppeteerFontMode).description('📦 npm 字体包（推荐，即装即用 lxgw-wenkai-webfont）'),
-      Schema.const('release' as PuppeteerFontMode).description('📥 Gitee / GitHub Release 下载字体（复用 data/fonts）'),
-      Schema.const('custom' as PuppeteerFontMode).description('📁 本地自定义字体路径'),
-      Schema.const('none' as PuppeteerFontMode).description('🚫 不指定字体（使用浏览器默认字体）'),
+      Schema.const('npm' as PuppeteerFontMode).description('【 📦 npm 】 npm 字体包（推荐，即装即用 lxgw-wenkai-webfont）'),
+      Schema.const('release' as PuppeteerFontMode).description('【 📥 release 】 Gitee / GitHub Release 下载字体（复用 data/fonts）'),
+      Schema.const('custom' as PuppeteerFontMode).description('【 📁 custom 】 本地自定义字体路径'),
+      Schema.const('none' as PuppeteerFontMode).description('【 🚫 none 】 不指定字体（使用浏览器默认字体）'),
     ])
       .role('radio')
       .default('npm')
@@ -304,8 +310,8 @@ export const Config: Schema<Config> = Schema.intersect([
       .default(true)
       .description('🖼️ 是否每首歌曲都展示封面图（开启时 TOP 2~N 列表项也附带高保真缩略图）'),
     puppeteerDetailedMode: Schema.union([
-      Schema.const('standard' as PuppeteerDetailedMode).description('📋 精美海报卡片（展示原视频标题、UP 主、播放六维指标条）'),
-      Schema.const('simple' as PuppeteerDetailedMode).description('⚡ 精简海报（隐藏下方统计指标条）'),
+      Schema.const('standard' as PuppeteerDetailedMode).description('【 📋 standard 】 精美海报卡片（展示原视频标题、UP 主、播放六维指标条）'),
+      Schema.const('simple' as PuppeteerDetailedMode).description('【 ⚡ simple 】 精简海报（隐藏下方统计指标条）'),
     ])
       .role('radio')
       .default('standard')
@@ -324,16 +330,18 @@ export const Config: Schema<Config> = Schema.intersect([
 
   Schema.object({
     qqMarkdownDetailedMode: Schema.union([
-      Schema.const('card' as QQMarkdownDetailedMode).description('🎴 卡片流式排版（展示原视频标题、UP 主、播放六维指标与独立播放外链）'),
-      Schema.const('table' as QQMarkdownDetailedMode).description('📊 紧凑表格排版（三列表格：排名、歌曲名、播放跳转）'),
+      Schema.const('standard' as QQMarkdownDetailedMode).description('【 📋 standard 】 详细模式（表格输出 4 列：排名/歌曲与直达播放/创作者/时长与六维播放指标；卡片展示全量数据）'),
+      Schema.const('simple' as QQMarkdownDetailedMode).description('【 ⚡ simple 】 极简模式（表格输出 3 列：排名/歌曲名/直达播放；卡片仅保留核心排名与链接）'),
     ])
       .role('radio')
-      .default('card')
-      .description('📋 QQ 原生 Markdown 排版呈现模式'),
+      .default('standard')
+      .description('📋 QQ 原生 Markdown 信息详细度模式（同时作用于 md-style 与 md-table）'),
     qqMarkdownShowRenderInfo: Schema.boolean()
       .default(true)
       .description('⏱️ 是否在 Markdown 末尾展示 API 请求耗时、尝试源数量与总耗时'),
   }).description('📊 QQ 原生 Markdown 设置'),
+
+
 
   Schema.object({
     defaultTop: Schema.number()
@@ -352,8 +360,8 @@ export const Config: Schema<Config> = Schema.intersect([
       .description('🔔 是否启用每周新榜自动广播提醒'),
     broadcastSources: Schema.array(
       Schema.union([
-        Schema.const('bilibili' as BillboardSource).description('📺 Bili Board 术力口周榜 (B站本土周榜)'),
-        Schema.const('niconico' as BillboardSource).description('🎵 ニコニコ VOCALOID SONGS TOP20 (日本N站周榜)'),
+        Schema.const('bilibili' as BillboardSource).description('【 📺 bilibili 】 Bili Board 术力口周榜 (B站本土周榜)'),
+        Schema.const('niconico' as BillboardSource).description('【 🎵 niconico 】 ニコニコ VOCALOID SONGS TOP20 (日本N站周榜)'),
       ])
     )
       .role('checkbox')
@@ -383,4 +391,12 @@ export const Config: Schema<Config> = Schema.intersect([
       .max(120)
       .description('⏱️ 新榜自动检测周期（分钟，针对未单独指定 Cron 的目标生效）'),
   }).description('📢 订阅推送'),
+
+  // ===== 🐛 调试设置 =====
+  Schema.object({
+    verboseConsoleLog: Schema.boolean()
+      .default(false)
+      .description('🐛 在控制台输出详细参数和消息下发调试信息<br><i>包含渲染派发详情、各格式下发结果、QQ Markdown 完整 payload 及接口响应日志</i>'),
+  }).description('🐛 调试设置 🔧'),
 ])
+

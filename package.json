@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-billboard-data",
   "description": "🎵 对接 VincentZyuApps/billboard-data 数据源，提供术力口周榜与期数查询、查歌与查P主战绩检索 📊 支持多端精美海报渲染 ✨",
-  "version": "0.4.2-beta.6",
+  "version": "0.4.3-beta.7+20261015",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [

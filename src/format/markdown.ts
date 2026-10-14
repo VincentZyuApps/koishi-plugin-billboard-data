@@ -1,11 +1,12 @@
 import type { Session, Context } from 'koishi'
-import type { Config } from '../config'
+import type { Config, QQMarkdownDetailedMode } from '../config'
 import { type WeeklyDetail, type RenderStats, formatPublishTime, formatCount, formatDuration } from '../types'
 
 export function buildWeeklyQQMarkdown(
   detail: WeeklyDetail,
   limit: number,
-  detailedMode: 'card' | 'table' = 'card',
+  format: 'md-style' | 'md-table' = 'md-style',
+  detailedMode: QQMarkdownDetailedMode | 'card' | 'table' = 'standard',
   stats?: RenderStats,
   showRenderInfo: boolean = false
 ): string {
@@ -20,8 +21,10 @@ export function buildWeeklyQQMarkdown(
   const timeDesc = timeStr || detail.week ? `📅 ${timeStr} (第 ${detail.week || ''} 周) | ` : ''
   md += `> ${timeDesc}[🌐 查看原专栏](${detail.source_url})\n\n`
 
-  if (detailedMode === 'card') {
-    // 方案 B：流式卡片排版
+  const isSimple = detailedMode === 'simple' || (detailedMode as any) === 'table'
+
+  if (format === 'md-style') {
+    // 💫 流式卡片排版
     for (const item of items) {
       let rankBadge = `【TOP ${item.rank}】`
       if (item.rank === 1) rankBadge = '🥇 TOP 1'
@@ -31,7 +34,8 @@ export function buildWeeklyQQMarkdown(
       const playLink = item.bvid ? `[▶ 观看](${item.url || `https://www.bilibili.com/video/${item.bvid}`})` : ''
       md += `### ${rankBadge} ${item.title} ${playLink}\n`
 
-      if (item.video_meta) {
+      if (!isSimple && item.video_meta) {
+        // standard 详细排版
         const meta = item.video_meta
         const uploaderName = meta.uploader?.name || '未知'
         const dur = formatDuration(meta.duration)
@@ -42,28 +46,79 @@ export function buildWeeklyQQMarkdown(
         md += `> 👤 视频上传者: **${uploaderName}** ｜ ⏱️ 时长: ${dur}\n`
         md += `> 📊 播放: ${formatCount(s.view)} · 弹幕: ${formatCount(s.danmaku)} · 点赞: ${formatCount(s.like)} · 投币: ${formatCount(s.coin)} · 收藏: ${formatCount(s.favorite)}\n\n`
       } else {
+        // simple 极简排版或无元数据
+        if (item.author) {
+          md += `> 👤 作者: **${item.author}**\n`
+        }
         if (item.bvid) {
           md += `> 🔗 BV: ${item.bvid}\n\n`
+        } else {
+          md += `\n`
         }
       }
     }
   } else {
-    // 紧凑表格排版
-    md += `| 排名 | 歌曲名称 | 视频链接 |\n`
-    md += `| :---: | :--- | :---: |\n`
+    // 📊 表格排版
+    if (isSimple) {
+      // 极简三列表格（排名、歌曲名、跳转播放）
+      md += `| 排名 | 歌曲名称 | 播放链接 |\n`
+      md += `| :---: | :--- | :---: |\n`
 
-    for (const item of items) {
-      let rankBadge = `【TOP ${item.rank}】`
-      if (item.rank === 1) rankBadge = '🥇 TOP 1'
-      else if (item.rank === 2) rankBadge = '🥈 TOP 2'
-      else if (item.rank === 3) rankBadge = '🥉 TOP 3'
+      for (const item of items) {
+        let rankBadge = `【TOP ${item.rank}】`
+        if (item.rank === 1) rankBadge = '🥇 TOP 1'
+        else if (item.rank === 2) rankBadge = '🥈 TOP 2'
+        else if (item.rank === 3) rankBadge = '🥉 TOP 3'
 
-      const playLink = item.bvid ? `[▶ 播放](https://www.bilibili.com/video/${item.bvid})` : '-'
-      // 转义表格中的管道符
-      const safeTitle = item.title.replace(/\|/g, '&#124;')
-      md += `| ${rankBadge} | ${safeTitle} | ${playLink} |\n`
+        const playLink = item.bvid ? `[▶ 播放](https://www.bilibili.com/video/${item.bvid})` : (item.url ? `[▶ 播放](${item.url})` : '-')
+        const safeTitle = item.title.replace(/\|/g, '&#124;')
+        md += `| ${rankBadge} | ${safeTitle} | ${playLink} |\n`
+      }
+    } else {
+      // 详细四列表格（排名、歌曲与播放/原视频、创作者/UP主、时长与六维指标）
+      md += `| 排名 | 歌曲与播放 | 创作者 / UP主 | 时长与数据指标 |\n`
+      md += `| :---: | :--- | :--- | :--- |\n`
+
+      for (const item of items) {
+        let rankBadge = `【TOP ${item.rank}】`
+        if (item.rank === 1) rankBadge = '🥇 TOP 1'
+        else if (item.rank === 2) rankBadge = '🥈 TOP 2'
+        else if (item.rank === 3) rankBadge = '🥉 TOP 3'
+
+        const safeTitle = item.title.replace(/\|/g, '&#124;')
+        const playLink = item.bvid ? `[▶ 播放](https://www.bilibili.com/video/${item.bvid})` : (item.url ? `[▶ 播放](${item.url})` : '')
+        let songCol = playLink ? `**${safeTitle}** · ${playLink}` : `**${safeTitle}**`
+        if (item.video_meta?.title && item.video_meta.title !== item.title) {
+          const safeMetaTitle = item.video_meta.title.replace(/\|/g, '&#124;')
+          songCol += `<br/>🎬 原视频: ${safeMetaTitle}`
+        }
+
+        const authorName = item.video_meta?.uploader?.name || item.author || '-'
+        const safeAuthor = authorName.replace(/\|/g, '&#124;')
+
+        let metricCol = '-'
+        if (item.video_meta) {
+          const dur = formatDuration(item.video_meta.duration)
+          const s = item.video_meta.stat || ({} as any)
+          const statsList: string[] = []
+          if (s.view) statsList.push(`👁️ ${formatCount(s.view)}`)
+          if (s.danmaku) statsList.push(`💬 ${formatCount(s.danmaku)}`)
+          if (s.like) statsList.push(`👍 ${formatCount(s.like)}`)
+          if (s.coin) statsList.push(`🪙 ${formatCount(s.coin)}`)
+          if (s.favorite) statsList.push(`⭐ ${formatCount(s.favorite)}`)
+
+          const durStr = dur && dur !== '-' ? `⏱️ ${dur}` : ''
+          const statStr = statsList.join(' · ')
+          metricCol = durStr ? (statStr ? `${durStr}<br/>${statStr}` : durStr) : (statStr || '-')
+        } else if (item.author) {
+          metricCol = item.bvid ? `🔗 BV: ${item.bvid}` : '-'
+        }
+
+        md += `| ${rankBadge} | ${songCol} | ${safeAuthor} | ${metricCol} |\n`
+      }
     }
   }
+
 
   const sourceCredit = isNico
     ? '> 💡 数据来源于 Bilibili @Elvansphere（Niconico Vocaloid Songs 周榜 TOP20 专栏）\n'
@@ -82,35 +137,83 @@ export async function sendWeeklyQQMarkdown(
   config: Config,
   detail: WeeklyDetail,
   limit: number,
+  format: 'md-style' | 'md-table' = 'md-style',
   stats?: RenderStats
 ): Promise<boolean> {
   const logger = ctx.logger('billboard')
+  const isVerbose = config.verboseConsoleLog
+
   if (session.platform !== 'qq') {
+    if (isVerbose) {
+      logger.info(`[DEBUG] sendWeeklyQQMarkdown 忽略: 当前会话平台为 ${session.platform}，非 qq`)
+    }
     return false
   }
 
-  const detailedMode = config.qqMarkdownDetailedMode ?? 'card'
+  const detailedMode = config.qqMarkdownDetailedMode ?? 'standard'
   const showRenderInfo = config.qqMarkdownShowRenderInfo ?? true
-  const content = buildWeeklyQQMarkdown(detail, limit, detailedMode, stats, showRenderInfo)
+  const content = buildWeeklyQQMarkdown(detail, limit, format, detailedMode, stats, showRenderInfo)
+
+  // 挂载在 session 上的递增序号，结合秒级时间戳取模 100,000 作为安全正整数初始基准
+  const msgSeq = ((session as any)._qqMsgSeq = (((session as any)._qqMsgSeq ?? (Math.floor(Date.now() / 1000) % 100000)) + 1))
+
+  const payload: any = {
+    msg_type: 2,
+    markdown: { content },
+  }
+
+  if (session.messageId) {
+    const now = Date.now()
+    const msgTime = session.timestamp ?? now
+    // 5 分钟内被动回复有效
+    if (now - msgTime < 300000) {
+      payload.msg_id = session.messageId
+      payload.msg_seq = msgSeq
+    } else if (isVerbose) {
+      logger.info(`[DEBUG] 被动回复超时 (>5min): now=${now}, msgTime=${msgTime}`)
+    }
+  }
+
+  if (isVerbose) {
+    logger.info(`[DEBUG] 开始发送 QQ 原生 Markdown (${format}): channelId=${session.channelId}, msg_id=${payload.msg_id}, msg_seq=${payload.msg_seq}, content_length=${content.length}`)
+    logger.info(`[DEBUG] QQ Markdown (${format}) Payload:\n${JSON.stringify({ ...payload, markdown: { content: content.slice(0, 300) + '... (truncated)' } }, null, 2)}`)
+  }
 
   try {
-    if (session.bot?.internal?.sendMessage) {
-      await session.bot.internal.sendMessage(session.channelId, {
-        msg_id: session.messageId,
-        msg_type: 2,
-        markdown: { content },
-      })
-      return true
+    const bot = session.bot as any
+    const qq = (session as any).qq
+    let resp: any
+
+    if (qq?.sendPrivateMessage && session.isDirect) {
+      if (isVerbose) logger.info(`[DEBUG] 使用通道: session.qq.sendPrivateMessage`)
+      resp = await qq.sendPrivateMessage(session.channelId, payload)
+    } else if (qq?.sendMessage) {
+      if (isVerbose) logger.info(`[DEBUG] 使用通道: session.qq.sendMessage`)
+      resp = await qq.sendMessage(session.channelId, payload)
+    } else if (bot?.internal?.sendMessage) {
+      if (isVerbose) logger.info(`[DEBUG] 使用通道: bot.internal.sendMessage`)
+      resp = await bot.internal.sendMessage(session.channelId, payload)
     } else {
-      // 适配其他可能的 QQ 适配器 markdown 节点下发
-      await session.send({
+      if (isVerbose) logger.info(`[DEBUG] 使用兜底通道: session.send({ type: 'markdown' })`)
+      resp = await session.send({
         type: 'markdown',
         attrs: { content },
       } as any)
-      return true
     }
+
+    if (isVerbose) {
+      logger.info(`[DEBUG] ✅ QQ 原生 Markdown (${format}) 发送成功: %o`, resp)
+    }
+    return true
   } catch (err: any) {
-    logger.warn(`⚠️ QQ 原生 Markdown 发送失败: ${err.message || err}`)
+    const errData = err?.response?.data
+    const errMsg = errData ? (typeof errData === 'object' ? JSON.stringify(errData) : errData) : (err.message || err)
+    logger.warn(`⚠️ QQ 原生 Markdown (${format}) 发送失败 (msg_seq=${payload.msg_seq}): ${errMsg}`)
+    if (isVerbose && err.stack) {
+      logger.warn(`[DEBUG] 异常堆栈: ${err.stack}`)
+    }
     return false
   }
 }
+
+
