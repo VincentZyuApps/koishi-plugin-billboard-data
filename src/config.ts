@@ -9,10 +9,11 @@ export interface BroadcastTarget {
   cron?: string
 }
 
-export type OutputFormat = 'text' | 'takumi' | 'puppeteer' | 'md-style' | 'md-table'
+export type OutputFormat = 'text' | 'forward' | 'takumi' | 'puppeteer' | 'md-style' | 'md-table'
 export type TakumiFontMode = 'release' | 'custom' | 'none'
 export type PuppeteerFontMode = 'npm' | 'release' | 'custom' | 'none'
 export type TextDetailedMode = 'standard' | 'simple'
+export type ForwardDetailedMode = 'standard' | 'simple'
 export type TakumiDetailedMode = 'standard' | 'simple'
 export type PuppeteerDetailedMode = 'standard' | 'simple'
 export type QQMarkdownDetailedMode = 'standard' | 'simple'
@@ -25,6 +26,19 @@ export interface DataSourceConfig {
   enabled: boolean
   mode: DataSourceMode
   network: NetworkMode
+}
+
+export interface SupportedPlatformEntry {
+  platform: string
+  enabled: boolean
+}
+
+export function getEnabledPlatforms(entries?: SupportedPlatformEntry[]): string[] {
+  if (!entries || !Array.isArray(entries)) return []
+  return entries
+    .filter(e => e?.enabled)
+    .map(e => String(e.platform || '').trim().toLowerCase())
+    .filter(Boolean)
 }
 
 export interface Config {
@@ -68,6 +82,12 @@ export interface Config {
   textDetailedMode: TextDetailedMode
   textShowRenderInfo: boolean
 
+  // Forward 合并转发设置
+  forwardDetailedMode: ForwardDetailedMode
+  forwardShowCover: boolean
+  restrictForwardPlatforms: boolean
+  forwardSupportedPlatforms: SupportedPlatformEntry[]
+
   // Takumi WASM 渲染设置
   takumiFontMode: TakumiFontMode
   takumiCustomFontPath: string
@@ -86,7 +106,11 @@ export interface Config {
 
   // QQ 原生 Markdown 设置
   qqMarkdownDetailedMode: QQMarkdownDetailedMode
+  qqMarkdownShowCover: boolean
+  qqMarkdownCoverWidth: number
+  qqMarkdownCoverHeight: number
   qqMarkdownShowRenderInfo: boolean
+  qqMarkdownSupportedPlatforms: SupportedPlatformEntry[]
 
   // 常规偏好与广播
   defaultTop: number
@@ -219,21 +243,10 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description('📦 运维归档与冷启动回溯'),
 
   Schema.object({
-    enableBilibiliCookie: Schema.boolean()
-      .default(false)
-      .experimental()
-      .description('🍪 是否在爬取 B 站专栏时携带自定义 Cookie（唯一生效来源为本开关）'),
-    bilibiliCookie: Schema.string()
-      .default('')
-      .role('secret')
-      .experimental()
-      .description('🍪 自定义 Bilibili Cookie（如 SESSDATA 等，可降低高频访客风控风险）'),
-  }).description('🧪 实验性 B 站凭证设置'),
-
-  Schema.object({
     outputFormats: Schema.array(
       Schema.union([
         Schema.const('text' as OutputFormat).description('【 📝 text 】 纯文本消息'),
+        Schema.const('forward' as OutputFormat).description('【 📦 forward 】 合并转发节点（支持 OneBot / Red / Discord，分曲折叠防刷屏）'),
         Schema.const('takumi' as OutputFormat).description('【 ⚡ takumi 】 Takumi WASM 渲染出图（B站粉蓝极速轻量看板）'),
         Schema.const('puppeteer' as OutputFormat).description('【 🎨 puppeteer 】 Puppeteer 网页出图（高保真精美海报）'),
         Schema.const('md-style' as OutputFormat).description('【 💫 md-style 】 QQ 原生 Markdown 卡片流式风格（含蓝字外链跳转，仅在 QQ 官bot 平台生效）'),
@@ -241,8 +254,8 @@ export const Config: Schema<Config> = Schema.intersect([
       ])
     )
       .role('checkbox')
-      .default(['takumi', 'puppeteer', 'md-style', 'md-table'])
-      .description('📤 周榜消息返回格式（支持多选，默认勾选图片与 QQ Markdown，不勾选纯文本；QQ Markdown 仅在 QQ 官bot 平台生效）'),
+      .default(['text', 'takumi', 'puppeteer', 'md-style', 'md-table'])
+      .description('📤 周榜消息返回格式（支持多选组合，默认勾选除 forward 外的全部格式；未指定 -f 则默认按勾选批量输出）'),
   }).description('📤 消息输出格式'),
 
 
@@ -258,6 +271,33 @@ export const Config: Schema<Config> = Schema.intersect([
       .default(true)
       .description('⏱️ 是否在文本末尾展示 API 请求耗时、尝试源数量与总耗时'),
   }).description('📝 纯文本排版设置'),
+
+  Schema.object({
+    forwardDetailedMode: Schema.union([
+      Schema.const('standard' as ForwardDetailedMode).description('【 📋 standard 】 详细排版（每个节点包含完整视频指标与封面）'),
+      Schema.const('simple' as ForwardDetailedMode).description('【 ⚡ simple 】 极简排版（每个节点仅保留歌曲名、UP主与直达链接）'),
+    ])
+      .role('radio')
+      .default('standard')
+      .description('📋 合并转发消息的内容详细度模式'),
+    forwardShowCover: Schema.boolean()
+      .default(true)
+      .description('🖼️ 是否在合并转发的单曲独立节点中展示封面大图'),
+    restrictForwardPlatforms: Schema.boolean()
+      .default(true)
+      .description('📦 是否按下方平台列表限制 forward 合并转发。开启时只有白名单内平台会发送；关闭时所有平台尝试发送。'),
+    forwardSupportedPlatforms: Schema.array(Schema.object({
+      platform: Schema.string().default('onebot').description('🎯 平台 (如 onebot, red, discord)'),
+      enabled: Schema.boolean().default(true).description('✅ 是否启用'),
+    }))
+      .role('table')
+      .default([
+        { platform: 'onebot', enabled: true },
+        { platform: 'red', enabled: true },
+        { platform: 'discord', enabled: true },
+      ])
+      .description('📦 forward 合并转发支持的平台列表（配置允许的平台及是否启用）'),
+  }).description('📦 Forward 合并转发设置'),
 
   Schema.object({
     takumiFontMode: Schema.union([
@@ -336,9 +376,32 @@ export const Config: Schema<Config> = Schema.intersect([
       .role('radio')
       .default('standard')
       .description('📋 QQ 原生 Markdown 信息详细度模式（同时作用于 md-style 与 md-table）'),
+    qqMarkdownShowCover: Schema.boolean()
+      .default(true)
+      .description('🖼️ 是否在 Markdown 输出中展示视频封面（同时作用于 md-style 卡片头图与 md-table 歌曲缩略图）'),
+    qqMarkdownCoverWidth: Schema.number()
+      .default(160)
+      .min(80)
+      .max(1000)
+      .description('📐 封面图展示宽度 (px)（默认 160，建议 140~360）'),
+    qqMarkdownCoverHeight: Schema.number()
+      .default(90)
+      .min(45)
+      .max(800)
+      .description('📐 封面图展示高度 (px)（默认 90，与宽度默认保持 16:9 黄金比例）'),
     qqMarkdownShowRenderInfo: Schema.boolean()
       .default(true)
       .description('⏱️ 是否在 Markdown 末尾展示 API 请求耗时、尝试源数量与总耗时'),
+    qqMarkdownSupportedPlatforms: Schema.array(Schema.object({
+      platform: Schema.string().default('qq').description('🎯 平台 (固定仅限 qq 官方机器人平台)'),
+      enabled: Schema.boolean().default(true).description('✅ 是否启用'),
+    }))
+      .role('table')
+      .default([
+        { platform: 'qq', enabled: true },
+      ])
+      .disabled()
+      .description('🔒 QQ 原生 Markdown 专属平台白名单（系统保留且只读，固定仅限 qq 官方机器人平台）'),
   }).description('📊 QQ 原生 Markdown 设置'),
 
 

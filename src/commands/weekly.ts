@@ -1,5 +1,5 @@
 import { Context } from 'koishi'
-import type { Config, BillboardSource, OutputFormat } from '../config'
+import { type Config, type BillboardSource, type OutputFormat, getEnabledPlatforms } from '../config'
 import type { BillboardService } from '../service'
 import { dispatchWeeklyOutput } from '../format'
 import { sendReply } from '../utils/reply'
@@ -8,9 +8,10 @@ function normalizeOutputFormat(raw?: string): OutputFormat | undefined {
   if (!raw) return undefined
   const s = String(raw).trim().toLowerCase()
   if (['text', 'txt'].includes(s)) return 'text'
+  if (['forward', '合并转发', '转发'].includes(s)) return 'forward'
   if (['takumi', 'wasm'].includes(s)) return 'takumi'
   if (['puppeteer', 'pptr', 'web'].includes(s)) return 'puppeteer'
-  if (['md-style', 'mdstyle', 'style', 'card'].includes(s)) return 'md-style'
+  if (['md-style', 'mdstyle', 'style'].includes(s)) return 'md-style'
   if (['md-table', 'mdtable', 'table'].includes(s)) return 'md-table'
   return undefined
 }
@@ -25,21 +26,22 @@ export function registerWeeklyCommand(ctx: Context, config: Config, service: Bil
       '  bb [期数]         查看最新或指定期数周榜 (默认按配置数据源与多选输出格式)',
       '  bb -s bili [期数] 查看 B站本土 Bili Board 周榜',
       '  bb -s nico [期数] 查看 日本 N站 Billboard TOP20 周榜',
-      '  bb -f <格式>      临时指定单一输出格式 (text/takumi/pptr/md-style/md-table)',
+      '  bb -f <格式>      临时指定单一输出格式 (text/forward/takumi/pptr/md-style/md-table)',
       '  周榜b / bbb [期数] 快捷直达 B站周榜',
       '  周榜n / nbb [期数] 快捷直达 N站周榜',
-      '  bb.text           仅输出纯文本格式周榜',
-      '  bb.takumi         仅输出 Takumi WASM 看板图片',
-      '  bb.pptr           仅输出 Puppeteer 网页海报图片',
-      '  bb.md-style       仅输出 QQ 原生 Markdown 流式卡片 (仅限 QQ 官bot 平台)',
-      '  bb.md-table       仅输出 QQ 原生 Markdown 紧凑表格 (仅限 QQ 官bot 平台)',
+      '  bb.text           仅输出纯文本格式周榜 (别名: 周榜.文本)',
+      '  bb.forward        仅输出 Forward 合并转发消息 (别名: 周榜.转发)',
+      '  bb.takumi         仅输出 Takumi WASM 轻海报看板 (别名: 周榜.轻海报 / 周榜.takumi图)',
+      '  bb.pptr           仅输出 Puppeteer 网页海报图片 (别名: 周榜.网页图 / 周榜.海报)',
+      '  bb.md-style       仅输出 QQ 原生 Markdown 流式卡片 (别名: 周榜.卡片)',
+      '  bb.md-table       仅输出 QQ 原生 Markdown 紧凑表格 (别名: 周榜.表格)',
       '  bb.history        查看最近收录的周榜期数一览',
       '  bb.search <歌名>  在近期周榜中搜索歌曲排位战绩',
       '  bb.reload         强制刷新远程数据缓存',
       '  bb.help           查看周榜帮助说明',
     ].join('\n'))
     .option('source', '-s, --source <source:string> 指定数据源 (bilibili/bili 或 niconico/nico)')
-    .option('format', '-f, --format <format:string> 临时指定输出格式 (text, takumi, puppeteer/pptr, md-style, md-table)')
+    .option('format', '-f, --format <format:string> 临时指定输出格式 (text, forward, takumi, puppeteer/pptr, md-style, md-table)')
     .option('limit', '-n <limit:number> 展示排名前几位', { fallback: config.defaultTop })
     .option('cover', '-c, --cover <cover:string> 是否展示封面图 (y/n/yes/no/t/f/true/false)')
     .action(async ({ session, options }, targetIssue) => {
@@ -68,10 +70,50 @@ export function registerWeeklyCommand(ctx: Context, config: Config, service: Bil
       if (options?.format) {
         const parsed = normalizeOutputFormat(options.format)
         if (!parsed) {
-          await sendReply(session, config, `❌ 不支持的输出格式「${options.format}」，支持: text, takumi, puppeteer, md-style, md-table`)
+          await sendReply(session, config, `❌ 不支持的输出格式「${options.format}」，支持: text, forward, takumi, puppeteer, md-style, md-table`)
           return
         }
         overrideFormats = [parsed]
+      }
+
+      // 3. 前置平台能力门禁短路检查 (避免非目标平台空跑爬虫与网络请求)
+      const targetFormats: OutputFormat[] = overrideFormats || config.outputFormats || ['text', 'takumi', 'puppeteer', 'md-style', 'md-table']
+      const platform = String(session?.platform || '').trim().toLowerCase()
+
+      const qqAllowedPlatforms = getEnabledPlatforms(config.qqMarkdownSupportedPlatforms)
+      const allowedQQ = qqAllowedPlatforms.length > 0 ? qqAllowedPlatforms : ['qq']
+      const isQQAllowed = allowedQQ.includes(platform)
+
+      const fwdAllowedPlatforms = getEnabledPlatforms(config.forwardSupportedPlatforms)
+      const isFwdAllowed = !config.restrictForwardPlatforms || fwdAllowedPlatforms.includes(platform)
+
+      // 3.1 显式指定单一格式 (-f) 的短路拦截
+      if (overrideFormats && overrideFormats.length === 1) {
+        const fmt = overrideFormats[0]
+        if ((fmt === 'md-style' || fmt === 'md-table') && !isQQAllowed) {
+          const listStr = allowedQQ.join(' / ') || 'qq'
+          await sendReply(session, config, `⚠️ QQ 原生 Markdown (${fmt}) 仅在 ${listStr} 官bot 平台生效。`)
+          return
+        }
+        if (fmt === 'forward' && config.restrictForwardPlatforms && !isFwdAllowed) {
+          const listStr = fwdAllowedPlatforms.join(' / ') || '无'
+          await sendReply(session, config, `⚠️ 合并转发格式 (forward) 仅支持 ${listStr} 平台。`)
+          return
+        }
+      }
+
+      // 3.2 默认多选配置的短路拦截 (当所有配置的输出格式均在当前平台不可用时，提前中止)
+      if (!overrideFormats) {
+        const usableFormats = targetFormats.filter(f => {
+          if (f === 'md-style' || f === 'md-table') return isQQAllowed
+          if (f === 'forward') return isFwdAllowed
+          return true // text, takumi, puppeteer 跨平台通用
+        })
+
+        if (usableFormats.length === 0) {
+          await sendReply(session, config, `⚠️ 当前配置的输出格式在当前平台 (${platform || '未知'}) 均不可用，请在插件配置中启用 text、takumi 或 puppeteer 等通用格式。`)
+          return
+        }
       }
 
       const limit = Math.max(1, Math.min(20, options?.limit || config.defaultTop))
@@ -139,13 +181,44 @@ export function registerWeeklyCommand(ctx: Context, config: Config, service: Bil
       return await session.execute(`bb -s niconico${arg}`)
     })
 
-  // 5 大输出格式的子指令 (全部使用 session.execute 重定向至 bb -f <format>)
+  // 6 大输出格式的子指令 (全部使用 session.execute 重定向至 bb -f <format>)
   const FORMAT_SUBCOMMANDS: { name: string; format: OutputFormat; desc: string; aliases: string[] }[] = [
-    { name: 'text', format: 'text', desc: '📝 仅以纯文本格式查看周榜', aliases: ['bb.text', '周榜文本'] },
-    { name: 'takumi', format: 'takumi', desc: '⚡ 仅以 Takumi WASM 极速看板出图查看周榜', aliases: ['bb.takumi', '周榜takumi'] },
-    { name: 'pptr', format: 'puppeteer', desc: '🎨 仅以 Puppeteer 网页精美海报出图查看周榜', aliases: ['bb.pptr', 'bb.puppeteer', '周榜海报'] },
-    { name: 'md-style', format: 'md-style', desc: '💫 仅以 QQ 原生 Markdown 流式卡片查看周榜 (仅限 QQ 官bot 平台)', aliases: ['bb.md-style', '周榜卡片'] },
-    { name: 'md-table', format: 'md-table', desc: '📊 仅以 QQ 原生 Markdown 紧凑表格查看周榜 (仅限 QQ 官bot 平台)', aliases: ['bb.md-table', '周榜表格'] },
+    {
+      name: 'text',
+      format: 'text',
+      desc: '📝 仅以纯文本格式查看周榜',
+      aliases: ['bb.text', 'bb.txt', '周榜.文本', '周榜.纯文本', '周榜文本'],
+    },
+    {
+      name: 'forward',
+      format: 'forward',
+      desc: '📦 仅以合并转发消息查看周榜 (支持 onebot/red/discord 平台)',
+      aliases: ['bb.forward', '周榜.转发', '周榜.合并转发', '周榜转发'],
+    },
+    {
+      name: 'takumi',
+      format: 'takumi',
+      desc: '⚡ 仅以 Takumi WASM 极速看板出图查看周榜',
+      aliases: ['bb.takumi', 'bb.wasm', '周榜.takumi图', '周榜.轻海报', '周榜.轻海报图', '周榜轻海报', '周榜.看板图', '周榜.看板', '周榜takumi'],
+    },
+    {
+      name: 'pptr',
+      format: 'puppeteer',
+      desc: '🎨 仅以 Puppeteer 网页精美海报出图查看周榜',
+      aliases: ['bb.pptr', 'bb.puppeteer', '周榜.网页图', '周榜.海报图', '周榜.海报', '周榜.pptr图', '周榜.puppeteer图', '周榜海报', '周榜pptr'],
+    },
+    {
+      name: 'md-style',
+      format: 'md-style',
+      desc: '💫 仅以 QQ 原生 Markdown 流式卡片查看周榜 (仅限 QQ 官bot 平台)',
+      aliases: ['bb.md-style', 'bb.style', '周榜.卡片', '周榜.卡片图', '周榜.流式卡片', '周榜卡片'],
+    },
+    {
+      name: 'md-table',
+      format: 'md-table',
+      desc: '📊 仅以 QQ 原生 Markdown 紧凑表格查看周榜 (仅限 QQ 官bot 平台)',
+      aliases: ['bb.md-table', 'bb.table', '周榜.表格', '周榜.紧凑表格', '周榜表格'],
+    },
   ]
 
   for (const sub of FORMAT_SUBCOMMANDS) {

@@ -2,13 +2,29 @@ import type { Session, Context } from 'koishi'
 import type { Config, QQMarkdownDetailedMode } from '../config'
 import { type WeeklyDetail, type RenderStats, formatPublishTime, formatCount, formatDuration } from '../types'
 
+function formatCoverUrl(url: string, w: number, h: number): string {
+  let picUrl = url.trim()
+  if (picUrl.startsWith('//')) {
+    picUrl = 'https:' + picUrl
+  } else if (picUrl.startsWith('http://')) {
+    picUrl = 'https://' + picUrl.slice(7)
+  }
+  if (picUrl.includes('hdslb.com') && !picUrl.includes('@')) {
+    picUrl += `@${w}w_${h}h_1c.jpg`
+  }
+  return picUrl
+}
+
 export function buildWeeklyQQMarkdown(
   detail: WeeklyDetail,
   limit: number,
   format: 'md-style' | 'md-table' = 'md-style',
-  detailedMode: QQMarkdownDetailedMode | 'card' | 'table' = 'standard',
+  detailedMode: QQMarkdownDetailedMode = 'standard',
   stats?: RenderStats,
-  showRenderInfo: boolean = false
+  showRenderInfo: boolean = false,
+  showCover: boolean = true,
+  coverWidth: number = 160,
+  coverHeight: number = 90
 ): string {
   const items = detail.items.slice(0, Math.min(limit, detail.items.length))
   const isNico = detail.source === 'niconico' || detail.title.includes('ニコニコ')
@@ -21,7 +37,9 @@ export function buildWeeklyQQMarkdown(
   const timeDesc = timeStr || detail.week ? `📅 ${timeStr} (第 ${detail.week || ''} 周) | ` : ''
   md += `> ${timeDesc}[🌐 查看原专栏](${detail.source_url})\n\n`
 
-  const isSimple = detailedMode === 'simple' || (detailedMode as any) === 'table'
+  const isSimple = detailedMode === 'simple'
+  const w = coverWidth || 160
+  const h = coverHeight || Math.round(w * 9 / 16) || 90
 
   if (format === 'md-style') {
     // 💫 流式卡片排版
@@ -33,6 +51,13 @@ export function buildWeeklyQQMarkdown(
 
       const playLink = item.bvid ? `[▶ 观看](${item.url || `https://www.bilibili.com/video/${item.bvid}`})` : ''
       md += `### ${rankBadge} ${item.title} ${playLink}\n`
+
+      if (showCover && item.pic_url) {
+        const picUrl = formatCoverUrl(item.pic_url, w, h)
+        md += `\n![封面 #${w}px #${h}px](${picUrl})\n\n`
+      } else {
+        md += `\n`
+      }
 
       if (!isSimple && item.video_meta) {
         // standard 详细排版
@@ -72,7 +97,12 @@ export function buildWeeklyQQMarkdown(
 
         const playLink = item.bvid ? `[▶ 播放](https://www.bilibili.com/video/${item.bvid})` : (item.url ? `[▶ 播放](${item.url})` : '-')
         const safeTitle = item.title.replace(/\|/g, '&#124;')
-        md += `| ${rankBadge} | ${safeTitle} | ${playLink} |\n`
+        let songCol = safeTitle
+        if (showCover && item.pic_url) {
+          const picUrl = formatCoverUrl(item.pic_url, w, h)
+          songCol = `![封面 #${w}px #${h}px](${picUrl})<br/>${safeTitle}`
+        }
+        md += `| ${rankBadge} | ${songCol} | ${playLink} |\n`
       }
     } else {
       // 详细四列表格（排名、歌曲与播放/原视频、创作者/UP主、时长与六维指标）
@@ -88,6 +118,10 @@ export function buildWeeklyQQMarkdown(
         const safeTitle = item.title.replace(/\|/g, '&#124;')
         const playLink = item.bvid ? `[▶ 播放](https://www.bilibili.com/video/${item.bvid})` : (item.url ? `[▶ 播放](${item.url})` : '')
         let songCol = playLink ? `**${safeTitle}** · ${playLink}` : `**${safeTitle}**`
+        if (showCover && item.pic_url) {
+          const picUrl = formatCoverUrl(item.pic_url, w, h)
+          songCol = `![封面 #${w}px #${h}px](${picUrl})<br/>${songCol}`
+        }
         if (item.video_meta?.title && item.video_meta.title !== item.title) {
           const safeMetaTitle = item.video_meta.title.replace(/\|/g, '&#124;')
           songCol += `<br/>🎬 原视频: ${safeMetaTitle}`
@@ -152,7 +186,10 @@ export async function sendWeeklyQQMarkdown(
 
   const detailedMode = config.qqMarkdownDetailedMode ?? 'standard'
   const showRenderInfo = config.qqMarkdownShowRenderInfo ?? true
-  const content = buildWeeklyQQMarkdown(detail, limit, format, detailedMode, stats, showRenderInfo)
+  const showCover = config.qqMarkdownShowCover ?? true
+  const coverWidth = config.qqMarkdownCoverWidth ?? 160
+  const coverHeight = config.qqMarkdownCoverHeight ?? 90
+  const content = buildWeeklyQQMarkdown(detail, limit, format, detailedMode, stats, showRenderInfo, showCover, coverWidth, coverHeight)
 
   // 挂载在 session 上的递增序号，结合秒级时间戳取模 100,000 作为安全正整数初始基准
   const msgSeq = ((session as any)._qqMsgSeq = (((session as any)._qqMsgSeq ?? (Math.floor(Date.now() / 1000) % 100000)) + 1))

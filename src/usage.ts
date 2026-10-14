@@ -89,8 +89,9 @@ export const usage = `
     <div style="${detailsBodyStyle}">
       <p style="margin: 4px 0;"><b>⚡ Takumi WASM 渲染出图：</b>基于 Rust/WASM 的轻量化渲染引擎，开箱即用，支持 <code>takumiScale</code> 放大倍率（默认 1.5 倍高清输出），适配移动端高分屏。</p>
       <p style="margin: 4px 0;"><b>🎨 Puppeteer 网页出图：</b>高保真海报级渲染，需要 Koishi 加载 <code>puppeteer</code> 服务。能完美呈现圆角、多重阴影与微缩歌曲封面。</p>
+      <p style="margin: 4px 0;"><b>📦 Forward 合并转发：</b>支持在 OneBot、Red、Discord 平台下发多节点合并转发消息，将 TOP 10 歌曲拆解为单曲独立折叠卡片，附带封面大图、时长与六维指标，整洁防刷屏。</p>
       <p style="margin: 4px 0;"><b>💫 QQ 原生 Markdown：</b>在 QQ 官bot 平台原生下发图文卡片与紧凑表格，支持蓝字外部跳转至 B 站原专栏或直达原视频。已拆分为 <code>md-style</code>（流式卡片风格）与 <code>md-table</code>（紧凑表格模式），两者均受 <code>qqMarkdownDetailedMode</code> 控制（<code>standard</code> 模式下表格展开为 4 列含歌曲与直达播放/原视频/创作者/时长与六维播放指标，卡片展示六维数据；<code>simple</code> 模式下表格为 3 列极简呈现，卡片仅保留核心链接）。</p>
-      <p style="margin: 4px 0;"><b>📤 自由多选输出：</b>可在「消息输出格式」列表中自由勾选需要的格式（纯文本、Takumi 看板、Puppeteer 海报、QQ md-style、QQ md-table），满足多场景需求。</p>
+      <p style="margin: 4px 0;"><b>📤 自由多选输出：</b>可在「消息输出格式」列表中自由勾选需要的格式（纯文本、Forward 合并转发、Takumi 看板、Puppeteer 海报、QQ md-style、QQ md-table），满足多场景需求。</p>
 
 
     </div>
@@ -134,17 +135,19 @@ export const usage = `
       <p style="margin: 4px 0;"><b>🎯 -f / --format 参数：</b>配置项 <code>outputFormats</code> 决定了默认的多选输出模式（可一次性同时发送文本、图片与 QQ Markdown）。当临时只想返回某种特定格式时，无需修改配置，在指令后追加 <code>-f &lt;format&gt;</code> 即可临时覆盖全局配置，本次<b>仅返回指定的单一格式</b>：</p>
       <ul style="margin: 6px 0; padding-left: 20px;">
         <li><code>bb -f text</code> 或 <code>bb -f txt</code>：本次仅输出纯文本周榜</li>
+        <li><code>bb -f forward</code> 或 <code>bb -f 转发</code>：本次仅输出 Forward 合并转发消息（支持 OneBot / Red / Discord 平台）</li>
         <li><code>bb -f takumi</code> 或 <code>bb -f wasm</code>：本次仅输出 Takumi WASM 渲染看板图片</li>
         <li><code>bb -f pptr</code> 或 <code>bb -f web</code>：本次仅输出 Puppeteer 网页精美海报图片</li>
-        <li><code>bb -f md-style</code> 或 <code>bb -f card</code>：本次仅输出 QQ 原生 Markdown 流式卡片（仅限 QQ 官bot 平台）</li>
+        <li><code>bb -f md-style</code> 或 <code>bb -f style</code>：本次仅输出 QQ 原生 Markdown 流式卡片（仅限 QQ 官bot 平台）</li>
         <li><code>bb -f md-table</code> 或 <code>bb -f table</code>：本次仅输出 QQ 原生 Markdown 紧凑表格（仅限 QQ 官bot 平台）</li>
       </ul>
-      <p style="margin: 6px 0 4px 0;"><b>🔄 session.execute 专属子指令重定向：</b>为提供极致便捷的交互，插件基于 <code>session.execute</code> 重定向机制内置了 5 大格式的快捷子指令，底层完全共享主指令流水线，自动继承 <code>-s</code> 榜单源、<code>-n</code> 数量截取与临时等待提示自动撤回机制：</p>
+      <p style="margin: 6px 0 4px 0;"><b>🔄 session.execute 专属子指令重定向：</b>为提供极致便捷的交互，插件基于 <code>session.execute</code> 重定向机制内置了 6 大格式的快捷子指令，底层完全共享主指令流水线，自动继承 <code>-s</code> 榜单源、<code>-n</code> 数量截取与临时等待提示自动撤回机制：</p>
       <ul style="margin: 6px 0; padding-left: 20px;">
         <li><code>bb.text [期数]</code>（别名 <code>周榜.text</code>、<code>周榜文本</code>）➔ <code>bb -f text</code></li>
         <li><code>bb.takumi [期数]</code>（别名 <code>周榜.takumi</code>、<code>周榜takumi</code>）➔ <code>bb -f takumi</code></li>
         <li><code>bb.pptr [期数]</code>（别名 <code>bb.puppeteer</code>、<code>周榜.pptr</code>、<code>周榜海报</code>）➔ <code>bb -f puppeteer</code></li>
         <li><code>bb.md-style [期数]</code>（别名 <code>周榜.md-style</code>、<code>周榜卡片</code>，仅限 QQ 官bot 平台）➔ <code>bb -f md-style</code></li>
+        <li><code>bb.forward [期数]</code>（别名 <code>周榜.forward</code>、<code>周榜转发</code>，支持 onebot/red/discord 平台）➔ <code>bb -f forward</code></li>
         <li><code>bb.md-table [期数]</code>（别名 <code>周榜.md-table</code>、<code>周榜表格</code>，仅限 QQ 官bot 平台）➔ <code>bb -f md-table</code></li>
       </ul>
       <p style="margin: 4px 0;">💡 <b>提示：</b>所有子指令均支持继续追加 <code>-s nico</code> 或 <code>-n 20</code>，例如输入 <code>bb.pptr -s nico 188</code> 即可直接以网页海报形式查看第 188 期 N 站周榜！</p>
@@ -170,7 +173,7 @@ export const usage = `
       </tr>
       <tr style="border-bottom: 1px solid var(--k-color-divider, rgba(127, 127, 127, 0.15));">
         <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>bb -f takumi</code></td>
-        <td style="padding: 6px 12px;">临时指定仅输出 Takumi 看板图 (支持 text/takumi/pptr/md-style/md-table)</td>
+        <td style="padding: 6px 12px;">临时指定仅输出 Takumi 看板图 (支持 text/forward/takumi/pptr/md-style/md-table)</td>
       </tr>
       <tr style="border-bottom: 1px solid var(--k-color-divider, rgba(127, 127, 127, 0.15));">
         <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>周榜b</code> / <code>bbb [期数]</code></td>
@@ -181,15 +184,23 @@ export const usage = `
         <td style="padding: 6px 12px;">快捷查看 N站日本周榜</td>
       </tr>
       <tr style="border-bottom: 1px solid var(--k-color-divider, rgba(127, 127, 127, 0.15));">
-        <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>bb.text</code> / <code>bb.pptr</code></td>
-        <td style="padding: 6px 12px;">快捷子指令：仅输出纯文本 / 仅输出海报出图</td>
+        <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>bb.text</code> / <code>bb.forward</code></td>
+        <td style="padding: 6px 12px;">快捷子指令：仅输出纯文本 (<code>周榜.文本</code>) / 仅输出合并转发 (<code>周榜.转发</code>)</td>
       </tr>
       <tr style="border-bottom: 1px solid var(--k-color-divider, rgba(127, 127, 127, 0.15));">
-        <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>bb.md-style</code></td>
-        <td style="padding: 6px 12px;">快捷子指令：仅输出 QQ Markdown 卡片 (仅限 QQ 官bot 平台)</td>
+        <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>周榜.轻海报</code> / <code>bb.takumi</code></td>
+        <td style="padding: 6px 12px;">快捷子指令：仅输出 Takumi WASM 极速轻海报看板 (<code>周榜.takumi图</code>)</td>
       </tr>
       <tr style="border-bottom: 1px solid var(--k-color-divider, rgba(127, 127, 127, 0.15));">
-        <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>bb.md-table</code></td>
+        <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>周榜.网页图</code> / <code>bb.pptr</code></td>
+        <td style="padding: 6px 12px;">快捷子指令：仅输出 Puppeteer 网页精美海报 (<code>周榜.海报</code>)</td>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--k-color-divider, rgba(127, 127, 127, 0.15));">
+        <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>周榜.卡片</code> / <code>bb.md-style</code></td>
+        <td style="padding: 6px 12px;">快捷子指令：仅输出 QQ 原生 Markdown 流式卡片 (仅限 QQ 官bot)</td>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--k-color-divider, rgba(127, 127, 127, 0.15));">
+        <td style="padding: 6px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"><code>周榜.表格</code> / <code>bb.md-table</code></td>
         <td style="padding: 6px 12px;">快捷子指令：仅输出 QQ Markdown 表格 (仅限 QQ 官bot 平台)</td>
       </tr>
       <tr style="border-bottom: 1px solid var(--k-color-divider, rgba(127, 127, 127, 0.15));">

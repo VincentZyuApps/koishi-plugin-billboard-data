@@ -1,13 +1,15 @@
 import type { Session, Context } from 'koishi'
-import type { Config } from '../config'
+import { type Config, type OutputFormat, getEnabledPlatforms } from '../config'
 import type { WeeklyDetail, RenderStats } from '../types'
 import { sendReply } from '../utils/reply'
 import { formatWeeklyText } from './text'
+import { sendWeeklyForward } from './forward'
 import { renderWeeklyTakumi } from './takumi'
 import { renderWeeklyPuppeteer } from './puppeteer'
 import { sendWeeklyQQMarkdown } from './markdown'
 
 export * from './text'
+export * from './forward'
 export * from './markdown'
 export * from './takumi'
 export * from './puppeteer'
@@ -20,14 +22,14 @@ export async function dispatchWeeklyOutput(
   limit: number,
   showCover: boolean,
   stats?: RenderStats,
-  overrideFormats?: ('text' | 'takumi' | 'puppeteer' | 'md-style' | 'md-table')[]
+  overrideFormats?: OutputFormat[]
 ) {
   const logger = ctx.logger('billboard')
   const isVerbose = config.verboseConsoleLog
   const isExplicit = overrideFormats && overrideFormats.length > 0
   const formats = isExplicit
     ? overrideFormats!
-    : (config.outputFormats || ['takumi', 'puppeteer', 'md-style', 'md-table'])
+    : (config.outputFormats || ['text', 'takumi', 'puppeteer', 'md-style', 'md-table'])
 
   if (isVerbose) {
     logger.info(`[DEBUG] dispatchWeeklyOutput 触发: platform=${session.platform}, channelId=${session.channelId}, formats=${JSON.stringify(formats)}, isExplicit=${Boolean(isExplicit)}`)
@@ -45,6 +47,16 @@ export async function dispatchWeeklyOutput(
       config.textShowRenderInfo ?? true
     )
     await sendReply(session, config, textMsg)
+  }
+
+  // 2. Forward 合并转发输出
+  if (formats.includes('forward')) {
+    if (isVerbose) logger.info('[DEBUG] 开始下发格式: forward')
+    try {
+      await sendWeeklyForward(ctx, session, config, detail, limit, stats)
+    } catch (err: any) {
+      logger.warn(`⚠️ 发送 Forward 合并转发失败: ${err.message || err}`)
+    }
   }
 
   // 2. Takumi WASM 出图输出
@@ -73,25 +85,31 @@ export async function dispatchWeeklyOutput(
     }
   }
 
-  // 4. QQ 原生 Markdown 卡片流式风格（md-style，仅在 QQ 官bot 平台生效）
+  // 4. QQ 原生 Markdown 卡片流式风格（md-style，仅在配置允许的平台生效）
+  const currentPlatform = String(session.platform || '').trim().toLowerCase()
+  const qqPlatforms = getEnabledPlatforms(config.qqMarkdownSupportedPlatforms)
+  const allowedQQList = qqPlatforms.length > 0 ? qqPlatforms : ['qq']
+  const isQQPlatform = allowedQQList.includes(currentPlatform)
+  const qqPlatformName = allowedQQList.join(' / ')
+
   let hasSentMdStyle = false
-  if (formats.includes('md-style') || formats.includes('qq_markdown' as any)) {
+  if (formats.includes('md-style')) {
     if (isVerbose) logger.info('[DEBUG] 开始下发格式: md-style')
-    if (session.platform === 'qq') {
+    if (isQQPlatform) {
       try {
         hasSentMdStyle = await sendWeeklyQQMarkdown(ctx, session, config, detail, limit, 'md-style', stats)
       } catch (err: any) {
         logger.warn(`⚠️ 发送 QQ Markdown (md-style) 失败: ${err.message || err}`)
       }
     } else if (isExplicit && formats.length === 1) {
-      await sendReply(session, config, '⚠️ QQ 原生 Markdown (md-style) 仅在 QQ 官bot 平台生效。')
+      await sendReply(session, config, `⚠️ QQ 原生 Markdown (md-style) 仅在 ${qqPlatformName} 官bot 平台生效。`)
     }
   }
 
-  // 5. QQ 原生 Markdown 紧凑表格模式（md-table，仅在 QQ 官bot 平台生效）
+  // 5. QQ 原生 Markdown 紧凑表格模式（md-table，仅在配置允许的平台生效）
   if (formats.includes('md-table')) {
     if (isVerbose) logger.info('[DEBUG] 开始下发格式: md-table')
-    if (session.platform === 'qq') {
+    if (isQQPlatform) {
       // 若刚发过 md-style，平滑等待 350ms 避开 QQ 网关瞬时并发频控
       if (hasSentMdStyle) {
         if (isVerbose) logger.info('[DEBUG] 等待 350ms 防抖缓冲...')
@@ -103,7 +121,7 @@ export async function dispatchWeeklyOutput(
         logger.warn(`⚠️ 发送 QQ Markdown (md-table) 失败: ${err.message || err}`)
       }
     } else if (isExplicit && formats.length === 1) {
-      await sendReply(session, config, '⚠️ QQ 原生 Markdown (md-table) 仅在 QQ 官bot 平台生效。')
+      await sendReply(session, config, `⚠️ QQ 原生 Markdown (md-table) 仅在 ${qqPlatformName} 官bot 平台生效。`)
     }
   }
 }

@@ -52,11 +52,12 @@
 | `周榜 -s <源> [期数]` | `bb -s <源>` | 显式指定数据源查看周榜（`bilibili`/`bili` 或 `niconico`/`nico`） | `bb -s nico` / `bb -s bili 120` |
 | `周榜b [期数]` | `bbb` | 快捷直达 B站本土周榜 | `周榜b` / `bbb` / `bbb 120` |
 | `周榜n [期数]` | `nbb` | 快捷直达 日本 N站 Billboard TOP20 周榜 | `周榜n` / `nbb` / `nbb 188` |
-| `周榜.text [期数]` | `bb.text`, `周榜文本` | 仅以纯文本格式输出周榜 | `bb.text` |
-| `周榜.takumi [期数]` | `bb.takumi`, `周榜takumi` | 仅以 Takumi WASM 看板渲染出图输出周榜 | `bb.takumi` |
-| `周榜.pptr [期数]` | `bb.pptr`, `bb.puppeteer`, `周榜海报` | 仅以 Puppeteer 网页精美海报出图输出周榜 | `bb.pptr` |
-| `周榜.md-style [期数]` | `bb.md-style`, `周榜卡片` | 仅以 QQ 原生 Markdown 流式卡片输出周榜 (仅限 QQ 官bot 平台) | `bb.md-style` |
-| `周榜.md-table [期数]` | `bb.md-table`, `周榜表格` | 仅以 QQ 原生 Markdown 紧凑表格输出周榜 (仅限 QQ 官bot 平台) | `bb.md-table` |
+| `周榜.text [期数]` | `bb.text`, `周榜.文本`, `周榜文本` | 仅以纯文本格式输出周榜 | `bb.text` / `周榜.文本` |
+| `周榜.forward [期数]` | `bb.forward`, `周榜.转发`, `周榜转发` | 仅以合并转发消息输出周榜 (支持 onebot/red/discord 平台) | `bb.forward` / `周榜.转发` |
+| `周榜.takumi [期数]` | `bb.takumi`, `周榜.轻海报`, `周榜.takumi图` | 仅以 Takumi WASM 极速轻海报出图输出周榜 | `bb.takumi` / `周榜.轻海报` |
+| `周榜.pptr [期数]` | `bb.pptr`, `周榜.网页图`, `周榜.海报` | 仅以 Puppeteer 网页精美海报出图输出周榜 | `bb.pptr` / `周榜.网页图` |
+| `周榜.md-style [期数]` | `bb.md-style`, `周榜.卡片`, `周榜卡片` | 仅以 QQ 原生 Markdown 流式卡片输出周榜 (仅限 QQ 官bot 平台) | `bb.md-style` / `周榜.卡片` |
+| `周榜.md-table [期数]` | `bb.md-table`, `周榜.表格`, `周榜表格` | 仅以 QQ 原生 Markdown 紧凑表格输出周榜 (仅限 QQ 官bot 平台) | `bb.md-table` / `周榜.表格` |
 | `周榜.历史` | `周榜历史`, `bb.history` | 查看近期收录的周榜期数总览（支持 `-s` 选项） | `bb.history` / `bb.history -s nico` |
 | `周榜.查歌 <歌名>` | `周榜搜歌`, `bb.search` | 检索某首歌曲在近期周榜中的排位战绩（支持 `-s` 选项） | `bb.search 敌人` / `bb.search -s nico 楽園` |
 | `周榜.刷新` | `bb.reload` | 管理员强制刷新远程索引缓存 | `周榜.刷新` |
@@ -64,7 +65,7 @@
 
 ### 指令选项
 - `-s, --source <bilibili|niconico>`：指定周榜来源（支持简写 `bili` / `nico`）。未传时严格读取配置中的 `defaultSource`。
-- `-f, --format <text|takumi|pptr|md-style|md-table>`：临时指定本次输出的单一格式（覆盖后台配置的多选设置；`pptr` 亦可写为 `puppeteer`）。
+- `-f, --format <text|forward|takumi|pptr|md-style|md-table>`：临时指定本次输出的单一格式（覆盖后台配置的多选设置；`pptr` 亦可写为 `puppeteer`）。
 - `-n <数量>`：指定展示前几名（1 ~ 20，默认 10）。
 - `-c, --cover <y/n>`：是否附带第一名封面海报大图（支持 `y`/`n`/`yes`/`no`/`t`/`f`/`true`/`false`）。
 
@@ -183,7 +184,7 @@
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `outputFormats` | `string[]` | `['takumi', 'puppeteer', 'md-style', 'md-table']` | 📤 周榜返回格式（可多选：默认勾选两张出图与两种 QQ Markdown，不勾选纯文本；QQ Markdown 仅限 QQ 官bot 平台） |
+| `outputFormats` | `string[]` | `['text', 'takumi', 'puppeteer', 'md-style', 'md-table']` | 📤 周榜返回格式（可多选组合：默认勾选除 forward 外的全部格式；未指定 -f 则默认按勾选批量输出） |
 
 ### 📝 纯文本排版设置
 
@@ -191,6 +192,15 @@
 |---|---|---|---|
 | `textDetailedMode` | `"standard" \| "simple"` | `"standard"` | 📋 纯文本信息详细度模式（`standard` 包含原视频标题与全量指标；`simple` 极简排版） |
 | `textShowRenderInfo` | `boolean` | `true` | ⏱️ 是否在文本末尾展示 API 请求耗时、尝试源数量及总耗时 |
+
+### 📦 Forward 合并转发设置
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `forwardDetailedMode` | `"standard" \| "simple"` | `"standard"` | 📋 合并转发消息内容详细度模式（`standard` 展示完整指标与封面；`simple` 极简排版） |
+| `forwardShowCover` | `boolean` | `true` | 🖼️ 是否在合并转发的单曲独立节点中展示封面大图 |
+| `restrictForwardPlatforms` | `boolean` | `true` | 📦 是否按下方平台列表限制 forward 合并转发。开启时只有白名单平台会发送；关闭时所有平台尝试发送 |
+| `forwardSupportedPlatforms` | `table` | `[{ platform: 'onebot', enabled: true }, { platform: 'red', enabled: true }, { platform: 'discord', enabled: true }]` | 📦 forward 合并转发支持的平台列表（两列表格：第一列为平台标识，第二列为是否启用开关） |
 
 ### ⚡ Takumi WASM 渲染设置
 
@@ -219,7 +229,11 @@
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `qqMarkdownDetailedMode` | `"standard" \| "simple"` | `"standard"` | 📋 QQ 原生 Markdown 信息详细度模式（同时作用于 `md-style` 与 `md-table`；`standard` 模式下表格展开为 4 列含歌曲与直达播放/原视频/创作者/时长与六维播放指标，卡片展示全量数据；`simple` 模式下表格为 3 列，卡片仅展示核心排名与链接） |
+| `qqMarkdownShowCover` | `boolean` | `true` | 🖼️ 是否在 Markdown 输出中展示视频封面（同时作用于 `md-style` 卡片头图与 `md-table` 歌曲缩略图） |
+| `qqMarkdownCoverWidth` | `number` | `160` | 📐 封面图展示宽度 (px)（默认 160，建议 140~360） |
+| `qqMarkdownCoverHeight` | `number` | `90` | 📐 封面图展示高度 (px)（默认 90，与宽度默认保持 16:9 黄金比例） |
 | `qqMarkdownShowRenderInfo` | `boolean` | `true` | ⏱️ 是否在 QQ Markdown 末尾追加展示 API 请求、尝试源数量及总耗时 |
+| `qqMarkdownSupportedPlatforms` | `table` | `[{ platform: 'qq', enabled: true }]` | 🔒 QQ 原生 Markdown 专属平台白名单（系统保留且只读锁定，代码中走配置动态校验） |
 
 
 
