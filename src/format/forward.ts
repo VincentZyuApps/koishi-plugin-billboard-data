@@ -24,29 +24,81 @@ function addForwardNode(authorId: string | undefined, authorName: string, conten
   return `  <message>\n    <author${authorAttr} name="${escapeAttr(authorName)}"/>\n    ${content}\n  </message>`
 }
 
-export function buildWeeklyForward(
+async function fetchImageAsBase64(ctx: Context, url: string, timeout = 5000): Promise<string | null> {
+  try {
+    const buffer = await ctx.http.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+      timeout,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.bilibili.com/',
+      },
+    })
+    if (!buffer || buffer.byteLength === 0) return null
+    const base64 = Buffer.from(buffer).toString('base64')
+    let mime = 'image/jpeg'
+    const lower = url.toLowerCase()
+    if (lower.endsWith('.png')) mime = 'image/png'
+    else if (lower.endsWith('.webp')) mime = 'image/webp'
+    else if (lower.endsWith('.gif')) mime = 'image/gif'
+    return `data:${mime};base64,${base64}`
+  } catch {
+    return null
+  }
+}
+
+export async function buildWeeklyForward(
   detail: WeeklyDetail,
   limit: number,
   botSelf?: { userId?: string; username?: string; name?: string },
   detailedMode: ForwardDetailedMode = 'standard',
   showCover: boolean = true,
   stats?: RenderStats,
-  showRenderInfo: boolean = true
-): string {
+  showRenderInfo: boolean = true,
+  broadcastNotice?: string,
+  ctx?: Context,
+  coverAsBase64: boolean = false
+): Promise<string> {
   const items = detail.items.slice(0, Math.min(limit, detail.items.length))
   const isNico = detail.source === 'niconico' || detail.title.includes('ニコニコ')
   const chartTitle = isNico ? 'ニコニコ VOCALOID SONGS TOP20' : 'Bili Board 术力口周榜'
   const botId = botSelf?.userId
   const botName = botSelf?.username || botSelf?.name || '术力口周榜'
 
+  // 如果启用了封面 Base64 转换且提供了 ctx，预先并发下载入选单曲的封面
+  const coverBase64Map = new Map<string, string>()
+  if (showCover && coverAsBase64 && ctx) {
+    const urlsToFetch: string[] = []
+    for (const item of items) {
+      if (item.pic_url) {
+        let picUrl = item.pic_url.trim()
+        if (picUrl.startsWith('//')) picUrl = 'https:' + picUrl
+        else if (picUrl.startsWith('http://')) picUrl = 'https://' + picUrl.slice(7)
+        urlsToFetch.push(picUrl)
+      }
+    }
+    const uniqueUrls = Array.from(new Set(urlsToFetch))
+    await Promise.all(
+      uniqueUrls.map(async (u) => {
+        const b64 = await fetchImageAsBase64(ctx, u)
+        if (b64) {
+          coverBase64Map.set(u, b64)
+        }
+      })
+    )
+  }
+
   const nodes: string[] = []
 
   // 1. 头节点：周榜概览
   const timeStr = formatPublishTime(detail)
   const timeDesc = timeStr ? `${timeStr}${detail.week ? ` (第 ${detail.week} 周)` : ''}` : ''
-  const headLines: string[] = [
-    `🎵【${chartTitle}】第 ${detail.issue} 期`,
-  ]
+  const headLines: string[] = []
+  if (broadcastNotice) {
+    headLines.push(`📢【订阅广播】${broadcastNotice}`)
+    headLines.push('────────────────')
+  }
+  headLines.push(`🎵【${chartTitle}】第 ${detail.issue} 期`)
   if (detail.title) {
     headLines.push(`📌 专栏原标题：${detail.title}`)
   }
@@ -103,7 +155,14 @@ export function buildWeeklyForward(
       } else if (picUrl.startsWith('http://')) {
         picUrl = 'https://' + picUrl.slice(7)
       }
-      nodeContent += `\n<img src="${escapeAttr(picUrl)}"/>`
+
+      const targetSrc = (coverAsBase64 && ctx)
+        ? coverBase64Map.get(picUrl)
+        : picUrl
+
+      if (targetSrc) {
+        nodeContent += `\n<img src="${escapeAttr(targetSrc)}"/>`
+      }
     }
 
     nodes.push(addForwardNode(botId, nodeTitle, nodeContent))
@@ -137,7 +196,8 @@ export async function sendWeeklyForward(
   config: Config,
   detail: WeeklyDetail,
   limit: number,
-  stats?: RenderStats
+  stats?: RenderStats,
+  broadcastNotice?: string
 ): Promise<boolean> {
   const logger = ctx.logger('billboard')
   const platform = session.platform || ''
@@ -152,7 +212,24 @@ export async function sendWeeklyForward(
   const detailedMode = config.forwardDetailedMode ?? 'standard'
   const showCover = config.forwardShowCover ?? true
   const showRenderInfo = config.textShowRenderInfo ?? true
-  const xml = buildWeeklyForward(detail, limit, session.bot, detailedMode, showCover, stats, showRenderInfo)
+  const coverAsBase64 = config.forwardCoverAsBase64 ?? false
+
+  if (config.verboseConsoleLog && coverAsBase64) {
+    logger.info('[DEBUG] sendWeeklyForward 正在将合并转发内封面图下载转换为 Base64 Buffer 发送...')
+  }
+
+  const xml = await buildWeeklyForward(
+    detail,
+    limit,
+    session.bot,
+    detailedMode,
+    showCover,
+    stats,
+    showRenderInfo,
+    broadcastNotice,
+    ctx,
+    coverAsBase64
+  )
 
   await session.send(h.unescape(xml))
   return true

@@ -4,6 +4,7 @@ import type { IndexData, WeeklyDetail, IssueMeta } from './types'
 import { CrawlerManager } from './crawler'
 import { CacheService } from './storage/cache'
 import { LocalBackupService } from './storage/backup'
+import { summarizeForLog } from './utils/log'
 
 export class BillboardService {
   private crawlerManager: CrawlerManager
@@ -151,10 +152,13 @@ export class BillboardService {
         const httpOptions: any = { timeout: 10000 }
         if (requestProxy) httpOptions.proxy = requestProxy
 
-        const res = await this.ctx.http.get<any>(requestUrl, httpOptions)
+        let res = await this.ctx.http.get<any>(requestUrl, httpOptions)
+        if (typeof res === 'string') {
+          res = JSON.parse(res)
+        }
 
         if (operation.type === 'crawler_latest') {
-          const issues = res.issues || []
+          const issues = res?.issues || []
           if (issues.length === 0) throw new Error('静态源 index.json 为空')
           const latestMeta = issues[0]
           const detailRel = latestMeta.path.replace(/^\/+/, '')
@@ -165,7 +169,10 @@ export class BillboardService {
             reqDetailUrl = `${this.config.ghProxyPrefix.trim().replace(/\/+$/, '')}/${detailUrl}`
           }
 
-          const detailRes = await this.ctx.http.get<WeeklyDetail>(reqDetailUrl, httpOptions)
+          let detailRes = await this.ctx.http.get<any>(reqDetailUrl, httpOptions)
+          if (typeof detailRes === 'string') {
+            detailRes = JSON.parse(detailRes)
+          }
           detailRes.source = operation.source
           this.lastApiDurationMs = Date.now() - startTime
           this.lastAttemptSourcesCount = attempted
@@ -181,7 +188,9 @@ export class BillboardService {
         return res as T
       } catch (err: any) {
         lastErr = err
-        logger.warn(`静态源 [${step.mode}:${step.network}] 请求失败 (${requestUrl}): ${err.message || err}`)
+        const rawMsg = err?.message || String(err)
+        const errMsg = rawMsg.length > 100 ? `${rawMsg.slice(0, 100)}... (truncated)` : rawMsg
+        logger.warn(`静态源 [${step.mode}:${step.network}] 请求失败 (${requestUrl}): ${errMsg}`)
       }
     }
 
@@ -202,6 +211,9 @@ export class BillboardService {
     })
     data.source = source
     this.backupService.saveIndex(source, data)
+    if (this.config.verboseConsoleLog) {
+      this.ctx.logger('billboard').info(`[DEBUG] 成功获取 [${source}] index.json 索引:\n${JSON.stringify(summarizeForLog(data), null, 2)}`)
+    }
     return data
   }
 
@@ -211,6 +223,9 @@ export class BillboardService {
       if (cached) {
         this.lastApiDurationMs = 0
         this.lastAttemptSourcesCount = 1
+        if (this.config.verboseConsoleLog) {
+          this.ctx.logger('billboard').info(`[DEBUG] 命中缓存 [${source}] 第 ${issue} 期周榜数据:\n${JSON.stringify(summarizeForLog(cached), null, 2)}`)
+        }
         return cached
       }
     }
@@ -224,6 +239,9 @@ export class BillboardService {
     detail.source = source
     await this.cacheService.set(source, issue, detail, false)
     this.backupService.saveIssue(source, issue, detail)
+    if (this.config.verboseConsoleLog) {
+      this.ctx.logger('billboard').info(`[DEBUG] 成功抓取 [${source}] 第 ${issue} 期周榜数据:\n${JSON.stringify(summarizeForLog(detail), null, 2)}`)
+    }
     return detail
   }
 
@@ -247,6 +265,10 @@ export class BillboardService {
       total_ranked: detail.total_ranked || (detail.items ? detail.items.length : 0),
       source_url: detail.source_url || '',
       path: `weekly/issue_${detail.issue}.json`,
+    }
+
+    if (this.config.verboseConsoleLog) {
+      this.ctx.logger('billboard').info(`[DEBUG] 成功获取 [${source}] 最新第 ${detail.issue} 期周榜数据:\n${JSON.stringify(summarizeForLog(detail), null, 2)}`)
     }
 
     return { meta, detail }

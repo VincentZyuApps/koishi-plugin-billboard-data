@@ -7,6 +7,7 @@ import { sendWeeklyForward } from './forward'
 import { renderWeeklyTakumi } from './takumi'
 import { renderWeeklyPuppeteer } from './puppeteer'
 import { sendWeeklyQQMarkdown } from './markdown'
+import { summarizeForLog } from '../utils/log'
 
 export * from './text'
 export * from './forward'
@@ -22,7 +23,8 @@ export async function dispatchWeeklyOutput(
   limit: number,
   showCover: boolean,
   stats?: RenderStats,
-  overrideFormats?: OutputFormat[]
+  overrideFormats?: OutputFormat[],
+  broadcastNotice?: string
 ) {
   const logger = ctx.logger('billboard')
   const isVerbose = config.verboseConsoleLog
@@ -32,7 +34,8 @@ export async function dispatchWeeklyOutput(
     : (config.outputFormats || ['text', 'takumi', 'puppeteer', 'md-style', 'md-table'])
 
   if (isVerbose) {
-    logger.info(`[DEBUG] dispatchWeeklyOutput 触发: platform=${session.platform}, channelId=${session.channelId}, formats=${JSON.stringify(formats)}, isExplicit=${Boolean(isExplicit)}`)
+    logger.info(`[DEBUG] dispatchWeeklyOutput 触发: platform=${session.platform}, channelId=${session.channelId}, formats=${JSON.stringify(formats)}, isExplicit=${Boolean(isExplicit)}, broadcastNotice=${Boolean(broadcastNotice)}`)
+    logger.info(`[DEBUG] 周榜数据概要 (第 ${detail.issue} 期):\n${JSON.stringify(summarizeForLog(detail), null, 2)}`)
   }
 
   // 1. 纯文本输出
@@ -41,10 +44,11 @@ export async function dispatchWeeklyOutput(
     const textMsg = formatWeeklyText(
       detail,
       limit,
-      showCover,
+      Boolean((config.textShowCover ?? config.showCover ?? true) && showCover),
       config.textDetailedMode ?? 'standard',
       stats,
-      config.textShowRenderInfo ?? true
+      config.textShowRenderInfo ?? true,
+      broadcastNotice
     )
     await sendReply(session, config, textMsg)
   }
@@ -53,17 +57,17 @@ export async function dispatchWeeklyOutput(
   if (formats.includes('forward')) {
     if (isVerbose) logger.info('[DEBUG] 开始下发格式: forward')
     try {
-      await sendWeeklyForward(ctx, session, config, detail, limit, stats)
+      await sendWeeklyForward(ctx, session, config, detail, limit, stats, broadcastNotice)
     } catch (err: any) {
       logger.warn(`⚠️ 发送 Forward 合并转发失败: ${err.message || err}`)
     }
   }
 
-  // 2. Takumi WASM 出图输出
+  // 3. Takumi WASM 出图输出
   if (formats.includes('takumi')) {
     if (isVerbose) logger.info('[DEBUG] 开始下发格式: takumi')
     try {
-      const img = await renderWeeklyTakumi(ctx, config, detail, limit, showCover, stats)
+      const img = await renderWeeklyTakumi(ctx, config, detail, limit, showCover, stats, broadcastNotice)
       if (img) {
         await sendReply(session, config, img)
       }
@@ -72,11 +76,11 @@ export async function dispatchWeeklyOutput(
     }
   }
 
-  // 3. Puppeteer 精美海报出图输出
+  // 4. Puppeteer 精美海报出图输出
   if (formats.includes('puppeteer')) {
     if (isVerbose) logger.info('[DEBUG] 开始下发格式: puppeteer')
     try {
-      const img = await renderWeeklyPuppeteer(ctx, config, detail, limit, showCover, stats)
+      const img = await renderWeeklyPuppeteer(ctx, config, detail, limit, showCover, stats, broadcastNotice)
       if (img) {
         await sendReply(session, config, img)
       }
@@ -85,7 +89,7 @@ export async function dispatchWeeklyOutput(
     }
   }
 
-  // 4. QQ 原生 Markdown 卡片流式风格（md-style，仅在配置允许的平台生效）
+  // 5. QQ 原生 Markdown 卡片流式风格（md-style，仅在配置允许的平台生效）
   const currentPlatform = String(session.platform || '').trim().toLowerCase()
   const qqPlatforms = getEnabledPlatforms(config.qqMarkdownSupportedPlatforms)
   const allowedQQList = qqPlatforms.length > 0 ? qqPlatforms : ['qq']
@@ -97,7 +101,7 @@ export async function dispatchWeeklyOutput(
     if (isVerbose) logger.info('[DEBUG] 开始下发格式: md-style')
     if (isQQPlatform) {
       try {
-        hasSentMdStyle = await sendWeeklyQQMarkdown(ctx, session, config, detail, limit, 'md-style', stats)
+        hasSentMdStyle = await sendWeeklyQQMarkdown(ctx, session, config, detail, limit, 'md-style', stats, broadcastNotice)
       } catch (err: any) {
         logger.warn(`⚠️ 发送 QQ Markdown (md-style) 失败: ${err.message || err}`)
       }
@@ -106,7 +110,7 @@ export async function dispatchWeeklyOutput(
     }
   }
 
-  // 5. QQ 原生 Markdown 紧凑表格模式（md-table，仅在配置允许的平台生效）
+  // 6. QQ 原生 Markdown 紧凑表格模式（md-table，仅在配置允许的平台生效）
   if (formats.includes('md-table')) {
     if (isVerbose) logger.info('[DEBUG] 开始下发格式: md-table')
     if (isQQPlatform) {
@@ -116,7 +120,7 @@ export async function dispatchWeeklyOutput(
         await new Promise(resolve => setTimeout(resolve, 350))
       }
       try {
-        await sendWeeklyQQMarkdown(ctx, session, config, detail, limit, 'md-table', stats)
+        await sendWeeklyQQMarkdown(ctx, session, config, detail, limit, 'md-table', stats, broadcastNotice)
       } catch (err: any) {
         logger.warn(`⚠️ 发送 QQ Markdown (md-table) 失败: ${err.message || err}`)
       }

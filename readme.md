@@ -98,11 +98,17 @@
 <p align="center">
   <img src="docs/images/preview/preview.qqmd-style.png" alt="QQ 原生 Markdown 流式卡片预览" width="600" />
 </p>
+<p align="center">
+  <img src="docs/images/preview/preview.qqmd-style.with-cover.png" alt="QQ 原生 Markdown 流式卡片预览" width="600" />
+</p>
 
 ### 📊 QQ 原生 Markdown 紧凑表格（md-table）
 > QQ 官bot 平台原生表格排版，直观对齐排名、歌名与跳转播放链接。 ↓
 <p align="center">
   <img src="docs/images/preview/preview.qqmd-table.png" alt="QQ 原生 Markdown 紧凑表格预览" width="600" />
+</p>
+<p align="center">
+  <img src="docs/images/preview/preview.qqmd-table.with-cover.png" alt="QQ 原生 Markdown 紧凑表格预览" width="600" />
 </p>
 
 ---
@@ -167,11 +173,11 @@
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `cacheStorage` | `"database" \| "memory"` | `"database"` | 💾 缓存存储后端（推荐 `database`，无可用数据库服务时自动平滑降级为内存） |
-| `cacheTtlMinutes` | `number` | `600` | ⏱️ 缓存有效期（分钟，默认 10 小时；小于等于 0 表示禁用缓存） |
-| `smartWednesdayExpire` | `boolean` | `true` | 🕒 每周三 19:00 术力口出榜时刻智能让最新一期缓存失效 |
-| `enableBackfill` | `boolean` | `true` | 📥 冷启动历史数据全量回溯（检测到历史数据缺失时后台自动拉取补全） |
-| `enableLocalBackup` | `boolean` | `true` | 💽 本地 JSON 镜像备份（自动在 `data/billboard-data/` 目录保存离线副本） |
+| `cacheBackend` | `"database" \| "memory"` | `"database"` | 💾 缓存存储后端（推荐 `database`，无可用数据库服务时自动平滑降级为内存） |
+| `cacheDuration` | `number` | `600` | ⏱️ 缓存有效期（分钟，默认 10 小时；小于等于 0 表示禁用缓存） |
+| `enableWeeklyInvalidation` | `boolean` | `true` | 🕒 每周三 19:00 术力口出榜时刻智能让最新一期缓存失效 |
+| `enableColdBootBackfill` | `boolean` | `true` | 📥 冷启动历史数据全量回溯（检测到历史数据缺失时后台自动拉取补全） |
+| `saveLocalJsonBackup` | `boolean` | `true` | 💽 本地 JSON 镜像备份（自动在 `data/billboard-data/` 目录保存离线副本） |
 
 ### 🍪 B站爬虫实验项 (可选)
 
@@ -250,17 +256,21 @@
 |---|---|---|---|
 | `enableBroadcast` | `boolean` | `false` | 🔔 是否启用每周新榜自动广播提醒 |
 | `broadcastSources` | `string[]` | `['bilibili', 'niconico']` | 📡 广播推送榜单源多选（全局生效于下方所有广播频道/群组） |
-| `broadcastTargets` | `BroadcastTarget[]` | 默认包含 OneBot 群聊 | 🎯 广播推送目标表格（包含 platform、Bot selfId、群号、独立 Cron 与启用开关） |
-| `checkInterval` | `number` | `15` | ⏱️ 新榜自动检测全局轮询周期（分钟，针对未指定 Cron 的目标生效） |
+| `broadcastTargets` | `BroadcastTarget[]` | 默认包含 OneBot 群聊 | 🎯 广播推送目标表格（双机制独立支持：新榜突发推送与 Cron 定时回顾） |
+| `broadcastIntervalText` | `string` | `"🎉 检测到本周最新术力口周榜出炉，第一时间为你抢鲜送达！"` | 🔔 新榜突发推送专属附带文案（当 checkInterval 检测到周三新榜时展示） |
+| `broadcastCronText` | `string` | `"📅 周末将至，一起来回顾本周三出炉的最新术力口周榜吧！"` | ⏰ 定时回顾推送专属附带文案（当 Cron 定时任务触发推送时展示） |
+| `checkInterval` | `number` | `15` | ⏱️ 新榜自动检测全局轮询周期（分钟） |
 
 #### 🎯 广播目标表格 (`broadcastTargets`) 说明
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `note` | `string` | 📝 备注，仅用于在控制台标记识别目标 |
-| `platform` | `string` | 🎯 平台标识，例如 `onebot`、`qq`、`discord` |
-| `selfId` | `string` | 🤖 Bot 自身账号 ID。**留空时向该 platform 下所有满足条件的在线 Bot 发送**；填写时精确匹配 |
-| `channelId` | `string` | 📡 目标群号或频道 ID，OneBot 填真实 QQ 群号 |
-| `cron` | `string` | ⏰ 目标专属 Cron 定时表达式（留空则遵循全局轮询周期 `checkInterval`） |
-| `enabled` | `boolean` | ✅ 独立启用开关，关闭后跳过该条目标 |
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `note` | `string` | `""` | 📝 备注，仅用于在控制台标记识别目标 |
+| `platform` | `string` | `"onebot"` | 🎯 平台标识，例如 `onebot`、`qq`、`discord` |
+| `selfId` | `string` | `""` | 🤖 Bot 自身账号 ID。**留空时向该 platform 下所有满足条件的在线 Bot 发送**；填写时精确匹配 |
+| `channelId` | `string` | `""` | 📡 目标群号或频道 ID，OneBot 填真实 QQ 群号 |
+| `enableNewCheck` | `boolean` | `true` | 🔔 **新榜突发推送开关**：后台定期轮询，每周三一旦检测到新期数发布，第一时间抢鲜推送 |
+| `enableCronPush` | `boolean` | `true` | ⏰ **定时回顾推送开关**：按填写的 Cron 表达式固定时刻触发（如周五回顾），推当周最新榜单 |
+| `cron` | `string` | `"0 18 * * 5"` | ⏰ 目标专属 Cron 定时表达式（默认每周五 18:00 回顾本周三刚出炉的周榜） |
+
 

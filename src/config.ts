@@ -5,7 +5,8 @@ export interface BroadcastTarget {
   platform: string
   selfId?: string
   channelId: string
-  enabled: boolean
+  enableNewCheck: boolean
+  enableCronPush: boolean
   cron?: string
 }
 
@@ -80,11 +81,13 @@ export interface Config {
 
   // 纯文本设置
   textDetailedMode: TextDetailedMode
+  textShowCover: boolean
   textShowRenderInfo: boolean
 
   // Forward 合并转发设置
   forwardDetailedMode: ForwardDetailedMode
   forwardShowCover: boolean
+  forwardCoverAsBase64: boolean
   restrictForwardPlatforms: boolean
   forwardSupportedPlatforms: SupportedPlatformEntry[]
 
@@ -114,10 +117,12 @@ export interface Config {
 
   // 常规偏好与广播
   defaultTop: number
-  showCover: boolean
+  showCover?: boolean
   enableBroadcast: boolean
   broadcastSources: BillboardSource[]
   broadcastTargets: BroadcastTarget[]
+  broadcastIntervalText: string
+  broadcastCronText: string
   checkInterval: number
 
   // 🐛 调试设置
@@ -238,7 +243,7 @@ export const Config: Schema<Config> = Schema.intersect([
       .default(true)
       .description('📁 是否在 Koishi 相对路径 data/billboard-data 镜像保存一份 JSON 结构（运维/本地查阅 bonus）'),
     enableColdBootBackfill: Schema.boolean()
-      .default(false)
+      .default(true)
       .description('❄️ 首次冷启动是否自动从 GitHub 全量拉取历史期数并存入数据库与本地 JSON 镜像（按固定加速链路同步）'),
   }).description('📦 运维归档与冷启动回溯'),
 
@@ -267,10 +272,13 @@ export const Config: Schema<Config> = Schema.intersect([
       .role('radio')
       .default('standard')
       .description('📋 纯文本信息详细度模式'),
+    textShowCover: Schema.boolean()
+      .default(true)
+      .description('🖼️ 是否在纯文本消息中附带 TOP 1 单曲封面图片（默认开启）'),
     textShowRenderInfo: Schema.boolean()
       .default(true)
       .description('⏱️ 是否在文本末尾展示 API 请求耗时、尝试源数量与总耗时'),
-  }).description('📝 纯文本排版设置'),
+  }).description('📝 Text 纯文本排版设置'),
 
   Schema.object({
     forwardDetailedMode: Schema.union([
@@ -283,6 +291,10 @@ export const Config: Schema<Config> = Schema.intersect([
     forwardShowCover: Schema.boolean()
       .default(true)
       .description('🖼️ 是否在合并转发的单曲独立节点中展示封面大图'),
+    forwardCoverAsBase64: Schema.boolean()
+      .default(false)
+      .experimental()
+      .description('🖼️ 是否将合并转发内的封面图下载为 Base64 Buffer 发送<br><i>默认关闭（直接发送公网 URL）。如果合并转发打不开或在 QQ 客户端呈现黑屏/空白，可以尝试打开此开关，改由本地插件先下载图片再转码发送，以规避远端 Bot 容器网络或图床防盗链问题。</i>'),
     restrictForwardPlatforms: Schema.boolean()
       .default(true)
       .description('📦 是否按下方平台列表限制 forward 合并转发。开启时只有白名单内平台会发送；关闭时所有平台尝试发送。'),
@@ -412,9 +424,6 @@ export const Config: Schema<Config> = Schema.intersect([
       .min(1)
       .max(20)
       .description('🔢 默认展示前多少名（可通过 -n 参数临时覆盖，最大 20）'),
-    showCover: Schema.boolean()
-      .default(true)
-      .description('🖼️ 查询周榜时是否附带第一名的榜单海报图片（仅纯文本模式生效）'),
   }).description('⚙️ 通用偏好设置'),
 
   Schema.object({
@@ -432,11 +441,12 @@ export const Config: Schema<Config> = Schema.intersect([
       .description('📡 广播推送榜单源多选（全局生效于下方所有广播频道/群组）'),
     broadcastTargets: Schema.array(Schema.object({
       note: Schema.string().default('').description('📝 备注'),
-      platform: Schema.string().default('onebot').description('🎯 平台 (如 onebot, qq, discord)'),
-      selfId: Schema.string().default('').description('🤖 Bot ID (可选，留空则匹配该平台任意 Bot)'),
-      channelId: Schema.string().default('').description('📡 目标频道/群组 ID'),
-      cron: Schema.string().default('').description('⏰ 专属 Cron 定时表达式（留空则遵循 checkInterval 轮询）'),
-      enabled: Schema.boolean().default(true).description('✅ 是否启用'),
+      platform: Schema.string().default('onebot').description('🎯 平台'),
+      selfId: Schema.string().default('').description('🤖 Bot ID'),
+      channelId: Schema.string().default('').description('📡 群号/频道 ID'),
+      enableNewCheck: Schema.boolean().default(true).description('🔔 新榜抢鲜'),
+      enableCronPush: Schema.boolean().default(true).description('⏰ 定时回顾'),
+      cron: Schema.string().default('0 18 * * 5').description('⏰ 定时 Cron'),
     }))
       .role('table')
       .default([{
@@ -444,15 +454,24 @@ export const Config: Schema<Config> = Schema.intersect([
         platform: 'onebot',
         selfId: '',
         channelId: '958366323',
-        cron: '',
-        enabled: true,
+        enableNewCheck: true,
+        enableCronPush: true,
+        cron: '0 18 * * 5',
       }])
-      .description('🎯 广播推送目标表格（包含平台、Bot账号、群号、Cron 定时及是否启用等）'),
+      .description('🎯 广播推送目标表格<br><i>• 🔔 新榜抢鲜：后台轮询检测到新榜发布第一时间推送（附带新榜专属文案）<br>• ⏰ 定时回顾：按 Cron 表达式定期推送当周周榜（默认每周五 18:00：0 18 * * 5，作为周末谈资）<br>• 🤖 Bot ID：可选，留空则匹配该平台任意在线 Bot；两项推送开关默认开启</i>'),
+    broadcastIntervalText: Schema.string()
+      .role('textarea')
+      .default('🎉 检测到本周最新术力口周榜出炉，第一时间为你抢鲜送达！')
+      .description('🔔 新榜突发推送专属附带文案（当 checkInterval 统一检测到新周报推送时展示）'),
+    broadcastCronText: Schema.string()
+      .role('textarea')
+      .default('📅 周末将至，一起来回顾本周三出炉的最新术力口周榜吧！')
+      .description('⏰ 定时回顾推送专属附带文案（当 Cron 定时任务触发推送时展示）'),
     checkInterval: Schema.number()
       .default(15)
       .min(1)
       .max(120)
-      .description('⏱️ 新榜自动检测周期（分钟，针对未单独指定 Cron 的目标生效）'),
+      .description('⏱️ 新榜自动检测周期（分钟，后台按此间隔定期轮询检测新周榜是否发布，专用于触发“新榜抢鲜”突发广播；默认 15 分钟）'),
   }).description('📢 订阅推送'),
 
   // ===== 🐛 调试设置 =====

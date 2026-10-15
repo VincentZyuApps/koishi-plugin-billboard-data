@@ -1,7 +1,8 @@
 import { Context } from 'koishi'
-import type { Config, BillboardSource } from './config'
+import type { Config, BillboardSource, BroadcastTarget } from './config'
 import type { BillboardService } from './service'
 import { formatWeeklyText } from './format/text'
+import { dispatchWeeklyOutput } from './format'
 
 export function applyBroadcast(ctx: Context, config: Config, service: BillboardService) {
   if (!config.enableBroadcast || !config.broadcastTargets || config.broadcastTargets.length === 0) {
@@ -18,41 +19,68 @@ export function applyBroadcast(ctx: Context, config: Config, service: BillboardS
     ? config.broadcastSources
     : ['bilibili', 'niconico']
 
-  const doBroadcast = async (src: BillboardSource, targetIssue?: number) => {
+  const sendToTarget = async (
+    target: BroadcastTarget,
+    detail: any,
+    src: BillboardSource,
+    notice: string,
+    modeTag: string
+  ) => {
+    if (!target.channelId) return
+    const matchedBots = ctx.bots.filter(b => {
+      if (b.platform !== target.platform) return false
+      if (target.selfId && target.selfId.trim() && b.selfId !== target.selfId.trim()) return false
+      return true
+    })
+
+    if (matchedBots.length === 0) {
+      logger.warn(`[${modeTag} - ${src}] 未找到匹配的在线 Bot: platform=${target.platform}, selfId=${target.selfId || '*'}`)
+      return
+    }
+
+    for (const bot of matchedBots) {
+      try {
+        if (typeof (bot as any).session === 'function') {
+          const session = (bot as any).session({
+            type: 'message',
+            subtype: 'group',
+            channelId: target.channelId,
+            platform: target.platform,
+            selfId: bot.selfId,
+          })
+          await dispatchWeeklyOutput(ctx, session, config, detail, config.defaultTop, config.showCover, undefined, undefined, notice)
+        } else {
+          const msg = formatWeeklyText(
+            detail,
+            config.defaultTop,
+            config.showCover,
+            config.textDetailedMode ?? 'standard',
+            undefined,
+            config.textShowRenderInfo ?? true,
+            notice
+          )
+          await bot.sendMessage(target.channelId, msg)
+        }
+        logger.info(`[${modeTag} - ${src}] Bot(${bot.selfId}) 成功推送到 [${target.platform}:${target.channelId}]`)
+      } catch (sendErr) {
+        logger.warn(`[${modeTag} - ${src}] Bot(${bot.selfId}) 发送到 [${target.platform}:${target.channelId}] 失败: ${sendErr}`)
+      }
+    }
+  }
+
+  const checkAndBroadcastNew = async (src: BillboardSource) => {
     try {
       const latest = await service.getLatest(src)
-      const currentIssue = targetIssue || latest.detail.issue
+      const currentIssue = latest.detail.issue
       if (currentIssue <= lastKnownIssues[src]) return
 
-      logger.info(`[${src}] 触发周榜广播！第 ${currentIssue} 期，准备向目标发送...`)
+      logger.info(`[新榜突发广播 - ${src}] 检测到新一期发布！第 ${currentIssue} 期，准备广播...`)
       const detail = latest.detail
-      const msg = formatWeeklyText(detail, config.defaultTop, config.showCover)
+      const notice = config.broadcastIntervalText || '🎉 检测到本周最新术力口周榜出炉，第一时间为你抢鲜送达！'
 
-      for (const target of config.broadcastTargets) {
-        if (!target.enabled || !target.channelId) continue
-
-        try {
-          const matchedBots = ctx.bots.filter(b => {
-            if (b.platform !== target.platform) return false
-            if (target.selfId && target.selfId.trim() && b.selfId !== target.selfId.trim()) return false
-            return true
-          })
-
-          if (matchedBots.length > 0) {
-            for (const bot of matchedBots) {
-              try {
-                await bot.sendMessage(target.channelId, msg)
-                logger.info(`[广播推送 - ${src}] Bot(${bot.selfId}) 成功推送到 [${target.platform}:${target.channelId}]`)
-              } catch (sendErr) {
-                logger.warn(`[广播推送 - ${src}] Bot(${bot.selfId}) 发送到 [${target.platform}:${target.channelId}] 失败: ${sendErr}`)
-              }
-            }
-          } else {
-            logger.warn(`[广播推送 - ${src}] 未找到匹配的在线 Bot: platform=${target.platform}, selfId=${target.selfId || '*'}`)
-          }
-        } catch (targetErr) {
-          logger.warn(`[广播推送 - ${src}] 发送到 [${target.platform}:${target.channelId}] 失败: ${targetErr}`)
-        }
+      const activeTargets = (config.broadcastTargets || []).filter(t => t.enableNewCheck && t.channelId)
+      for (const target of activeTargets) {
+        await sendToTarget(target, detail, src, notice, '新榜广播')
       }
       lastKnownIssues[src] = currentIssue
     } catch (err: any) {
@@ -61,6 +89,7 @@ export function applyBroadcast(ctx: Context, config: Config, service: BillboardS
   }
 
   ctx.on('ready', async () => {
+    // 初始化基线期数
     for (const src of sources) {
       try {
         const latest = await service.getLatest(src)
@@ -71,24 +100,30 @@ export function applyBroadcast(ctx: Context, config: Config, service: BillboardS
       }
     }
 
-    // 1. Cron 专属目标调度（如果存在 cron 服务）
+    // 1. Cron 专属定时回顾调度（到点即推最新榜单，不受新期数变动限制）
     if ((ctx as any).cron) {
-      for (const target of config.broadcastTargets) {
-        if (target.enabled && target.cron?.trim()) {
+      for (const target of (config.broadcastTargets || [])) {
+        if (target.enableCronPush && target.cron?.trim() && target.channelId) {
           (ctx as any).cron(target.cron.trim(), async () => {
             for (const src of sources) {
-              await doBroadcast(src)
+              try {
+                const latest = await service.getLatest(src)
+                const notice = config.broadcastCronText || '📅 周末将至，一起来回顾本周三出炉的最新术力口周榜吧！'
+                await sendToTarget(target, latest.detail, src, notice, 'Cron定时回顾')
+              } catch (err: any) {
+                logger.warn(`[Cron定时回顾 - ${src}] 获取并发送周榜异常: ${err.message || err}`)
+              }
             }
           })
-          logger.info(`[广播] 已成功为群组 [${target.channelId}] 挂载 Cron 定时: ${target.cron.trim()}`)
+          logger.info(`[广播] 已成功为目标 [${target.platform}:${target.channelId}] 挂载 Cron 定时回顾: ${target.cron.trim()}`)
         }
       }
     }
 
-    // 2. 传统周期性轮询调度（针对未配置 cron 的目标）
+    // 2. Interval 周期性轮询调度（仅在检测到新榜更新时推送给开启 enableNewCheck 的目标）
     ctx.setInterval(async () => {
       for (const src of sources) {
-        await doBroadcast(src)
+        await checkAndBroadcastNew(src)
       }
     }, config.checkInterval * 60 * 1000)
   })

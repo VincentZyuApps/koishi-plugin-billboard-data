@@ -8,7 +8,8 @@ export function formatWeeklyText(
   showCover: boolean,
   detailedMode: 'standard' | 'simple' = 'standard',
   stats?: RenderStats,
-  showRenderInfo: boolean = true
+  showRenderInfo: boolean = true,
+  broadcastNotice?: string
 ) {
   const isDetailed = detailedMode === 'standard'
   const items = detail.items.slice(0, Math.min(limit, detail.items.length))
@@ -18,6 +19,9 @@ export function formatWeeklyText(
   const chartTitle = isNico ? 'ニコニコ VOCALOID SONGS TOP20' : 'Bili Board 术力口周榜'
 
   lines.push(`🎵【${chartTitle}】第 ${detail.issue} 期`)
+  if (broadcastNotice) {
+    lines.push(`📢 [广播推送] ${broadcastNotice}`)
+  }
   if (detail.title) {
     lines.push(`📌 专栏原标题: ${detail.title}`)
   }

@@ -24,12 +24,16 @@ export function buildWeeklyQQMarkdown(
   showRenderInfo: boolean = false,
   showCover: boolean = true,
   coverWidth: number = 160,
-  coverHeight: number = 90
+  coverHeight: number = 90,
+  broadcastNotice?: string
 ): string {
   const items = detail.items.slice(0, Math.min(limit, detail.items.length))
   const isNico = detail.source === 'niconico' || detail.title.includes('ニコニコ')
   const chartTitle = isNico ? 'ニコニコ VOCALOID SONGS TOP20' : 'Bili Board 术力口周榜'
   let md = `# 🎵【${chartTitle}】第 ${detail.issue} 期\n\n`
+  if (broadcastNotice) {
+    md += `> 📢 **广播提醒**：${broadcastNotice}\n>\n`
+  }
   if (detail.title) {
     md += `> 📌 专栏原标题：[${detail.title}](${detail.source_url})\n>\n`
   }
@@ -172,7 +176,8 @@ export async function sendWeeklyQQMarkdown(
   detail: WeeklyDetail,
   limit: number,
   format: 'md-style' | 'md-table' = 'md-style',
-  stats?: RenderStats
+  stats?: RenderStats,
+  broadcastNotice?: string
 ): Promise<boolean> {
   const logger = ctx.logger('billboard')
   const isVerbose = config.verboseConsoleLog
@@ -189,7 +194,7 @@ export async function sendWeeklyQQMarkdown(
   const showCover = config.qqMarkdownShowCover ?? true
   const coverWidth = config.qqMarkdownCoverWidth ?? 160
   const coverHeight = config.qqMarkdownCoverHeight ?? 90
-  const content = buildWeeklyQQMarkdown(detail, limit, format, detailedMode, stats, showRenderInfo, showCover, coverWidth, coverHeight)
+  const content = buildWeeklyQQMarkdown(detail, limit, format, detailedMode, stats, showRenderInfo, showCover, coverWidth, coverHeight, broadcastNotice)
 
   // 挂载在 session 上的递增序号，结合秒级时间戳取模 100,000 作为安全正整数初始基准
   const msgSeq = ((session as any)._qqMsgSeq = (((session as any)._qqMsgSeq ?? (Math.floor(Date.now() / 1000) % 100000)) + 1))

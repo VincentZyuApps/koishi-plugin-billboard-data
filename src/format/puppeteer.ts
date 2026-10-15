@@ -104,7 +104,8 @@ export async function renderWeeklyPuppeteer(
   detail: WeeklyDetail,
   limit: number,
   showCover: boolean,
-  stats?: RenderStats
+  stats?: RenderStats,
+  broadcastNotice?: string
 ) {
   const logger = ctx.logger('billboard')
   if (!ctx.puppeteer) {
@@ -183,6 +184,20 @@ export async function renderWeeklyPuppeteer(
       border-radius: 20px;
       box-shadow: 0 4px 14px rgba(251, 114, 153, 0.35);
       letter-spacing: 0.5px;
+    }
+
+    .broadcast-banner {
+      background: #EFF6FF;
+      border: 1px solid #BFDBFE;
+      border-radius: 10px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1D4ED8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(29, 78, 216, 0.05);
     }
 
     /* TOP 1 冠军展示卡片 */
@@ -571,6 +586,13 @@ export async function renderWeeklyPuppeteer(
     </div>
     <div class="issue-badge">第 ${detail.issue} 期</div>
   </div>
+
+  ${broadcastNotice ? `
+  <div class="broadcast-banner">
+    <span>📢</span>
+    <span>[订阅广播] ${broadcastNotice}</span>
+  </div>
+  ` : ''}
 
   <!-- TOP 1 Hero -->
   ${top1 ? `

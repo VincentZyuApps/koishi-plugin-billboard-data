@@ -161,7 +161,8 @@ export async function renderWeeklyTakumi(
   detail: WeeklyDetail,
   limit: number,
   showCover: boolean,
-  stats?: RenderStats
+  stats?: RenderStats,
+  broadcastNotice?: string
 ) {
   const fontBuffer = await loadFontBuffer(ctx, config)
   const renderer = new takumiModule.Renderer(fontBuffer ? { fonts: [fontBuffer] } : {})
@@ -249,6 +250,33 @@ export async function renderWeeklyTakumi(
       ],
     })
   )
+
+  // 1.1 若存在广播文案，渲染订阅广播通知横幅
+  if (broadcastNotice) {
+    rootChildren.push(
+      container({
+        style: {
+          width: CONTENT_WIDTH,
+          backgroundColor: '#EFF6FF',
+          borderRadius: 10,
+          padding: '8px 16px',
+          marginBottom: 8,
+          border: '1px solid #BFDBFE',
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+        },
+        children: [
+          text(`📢 [订阅广播] ${broadcastNotice}`, {
+            fontSize: 13,
+            fontWeight: 600,
+            color: '#1D4ED8',
+            lineHeight: 18,
+          }),
+        ],
+      })
+    )
+  }
 
   // 2. TOP 1 冠军展示卡片
   if (items.length > 0) {

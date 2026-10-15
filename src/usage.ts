@@ -89,7 +89,7 @@ export const usage = `
     <div style="${detailsBodyStyle}">
       <p style="margin: 4px 0;"><b>⚡ Takumi WASM 渲染出图：</b>基于 Rust/WASM 的轻量化渲染引擎，开箱即用，支持 <code>takumiScale</code> 放大倍率（默认 1.5 倍高清输出），适配移动端高分屏。</p>
       <p style="margin: 4px 0;"><b>🎨 Puppeteer 网页出图：</b>高保真海报级渲染，需要 Koishi 加载 <code>puppeteer</code> 服务。能完美呈现圆角、多重阴影与微缩歌曲封面。</p>
-      <p style="margin: 4px 0;"><b>📦 Forward 合并转发：</b>支持在 OneBot、Red、Discord 平台下发多节点合并转发消息，将 TOP 10 歌曲拆解为单曲独立折叠卡片，附带封面大图、时长与六维指标，整洁防刷屏。</p>
+      <p style="margin: 4px 0;"><b>📦 Forward 合并转发：</b>支持在 OneBot、Red、Discord 平台下发多节点合并转发消息，将 TOP 10 歌曲拆解为单曲独立折叠卡片，附带封面大图、时长与六维指标，整洁防刷屏。若遇到部分客户端或 OneBot 框架（如 LLOneBot 容器环境）合并转发打不开或黑屏，可开启 <code>forwardCoverAsBase64</code> 改由插件在本地预先下载封面转为 Base64 Buffer 发送。</p>
       <p style="margin: 4px 0;"><b>💫 QQ 原生 Markdown：</b>在 QQ 官bot 平台原生下发图文卡片与紧凑表格，支持蓝字外部跳转至 B 站原专栏或直达原视频。已拆分为 <code>md-style</code>（流式卡片风格）与 <code>md-table</code>（紧凑表格模式），两者均受 <code>qqMarkdownDetailedMode</code> 控制（<code>standard</code> 模式下表格展开为 4 列含歌曲与直达播放/原视频/创作者/时长与六维播放指标，卡片展示六维数据；<code>simple</code> 模式下表格为 3 列极简呈现，卡片仅保留核心链接）。</p>
       <p style="margin: 4px 0;"><b>📤 自由多选输出：</b>可在「消息输出格式」列表中自由勾选需要的格式（纯文本、Forward 合并转发、Takumi 看板、Puppeteer 海报、QQ md-style、QQ md-table），满足多场景需求。</p>
 
@@ -121,10 +121,12 @@ export const usage = `
 
   <!-- 折叠区域 4 -->
   <details style="${detailsStyle}">
-    <summary style="${summaryStyle}"><b style="color: #00AEEC;">📢 每周新榜自动广播推送 (Cron / 轮询)</b></summary>
+    <summary style="${summaryStyle}"><b style="color: #00AEEC;">📢 每周新榜自动广播推送 (新榜突发抢鲜 & 周五定时回顾)</b></summary>
     <div style="${detailsBodyStyle}">
-      <p style="margin: 4px 0;"><b>🔔 自动检测与 Cron 调度：</b>支持为每个群组单独配置专属 <code>cron</code> 定时表达式（基于 Koishi <code>cron</code> 可选服务），同时也支持传统的 <code>checkInterval</code> 周期性轮询。</p>
-      <p style="margin: 4px 0;"><b>🎯 全局推送源与目标表格：</b>在表格上方通过 <code>broadcastSources</code> 全局多选榜单源（B站 / N站），下方 <code>broadcastTargets</code> 仅需配置平台、Bot selfId（留空匹配所有）、群号与专属 Cron，简洁高效！</p>
+      <p style="margin: 4px 0;"><b>🔔 双机制独立分流推送：</b>目标表格中提供了两个独立开关，支持多场景灵活搭配：
+        <br>• <code>enableNewCheck</code>（新榜抢鲜）：后台定期根据 <code>checkInterval</code> 轮询，周三一旦检测到新期数发布，第一时间带专属文案（如 <code>🎉 检测到本周最新周榜出炉...</code>）推送抢鲜。
+        <br>• <code>enableCronPush</code>（定时回顾）：按专属 <code>cron</code> 定时（默认每周五 18:00）固定到点触发，带周末回顾文案（如 <code>📅 周末将至，一起来回顾本周周榜...</code>）推当周最新榜单，作为群聊周末谈资。</p>
+      <p style="margin: 4px 0;"><b>🎨 全格式完美融入：</b>无论群聊使用纯文本、Forward 合并转发、Takumi WASM 看板、Puppeteer 精美海报还是 QQ 原生 Markdown（卡片/表格），都会在顶栏优雅呈现当前广播的情境提示文案！</p>
     </div>
   </details>
 

@@ -117,7 +117,7 @@ export function registerWeeklyCommand(ctx: Context, config: Config, service: Bil
       }
 
       const limit = Math.max(1, Math.min(20, options?.limit || config.defaultTop))
-      let showCover = config.showCover
+      let showCover = config.textShowCover ?? config.showCover ?? true
       if (options?.cover !== undefined && options?.cover !== null) {
         const val = String(options.cover).trim().toLowerCase()
         if (['y', 'yes', 't', 'true'].includes(val)) {

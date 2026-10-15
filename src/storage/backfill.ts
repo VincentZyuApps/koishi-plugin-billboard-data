@@ -3,6 +3,7 @@ import type { Config, BillboardSource } from '../config'
 import type { IndexData, WeeklyDetail } from '../types'
 import type { CacheService } from './cache'
 import type { LocalBackupService } from './backup'
+import { summarizeForLog } from '../utils/log'
 
 export class BackfillService {
   constructor(
@@ -57,12 +58,18 @@ export class BackfillService {
 
     for (const a of attempts) {
       try {
-        return await this.ctx.http.get<T>(a.url, a.options)
+        const res = await this.ctx.http.get<T>(a.url, a.options)
+        if (typeof res === 'string') {
+          return JSON.parse(res) as T
+        }
+        return res
       } catch (err: any) {
         lastErr = err
       }
     }
-    throw new Error(`回溯同步请求失败 [${path}]: ${lastErr?.message || lastErr}`)
+    const rawLast = lastErr?.message || String(lastErr)
+    const lastMsg = rawLast.length > 100 ? `${rawLast.slice(0, 100)}... (truncated)` : rawLast
+    throw new Error(`回溯同步请求失败 [${path}]: ${lastMsg}`)
   }
 
   async runBackfill(): Promise<void> {
@@ -79,6 +86,9 @@ export class BackfillService {
         const index = await this.fetch<IndexData>(`${source}/index.json`)
         index.source = source
         this.backupService.saveIndex(source, index)
+        if (this.config.verboseConsoleLog) {
+          logger.info(`[DEBUG] ${source} index.json 索引概览:\n${JSON.stringify(summarizeForLog(index), null, 2)}`)
+        }
 
         let count = 0
         for (const meta of index.issues) {
@@ -92,12 +102,16 @@ export class BackfillService {
             this.backupService.saveIssue(source, meta.issue, detail)
             count++
           } catch (itemErr: any) {
-            logger.debug(`回溯第 ${meta.issue} 期跳过: ${itemErr.message || itemErr}`)
+            const rawItemMsg = itemErr?.message || String(itemErr)
+            const itemMsg = rawItemMsg.length > 100 ? `${rawItemMsg.slice(0, 100)}... (truncated)` : rawItemMsg
+            logger.debug(`回溯第 ${meta.issue} 期跳过: ${itemMsg}`)
           }
         }
         logger.info(`✅ 成功完成 ${source} 历史归档同步，共入库 ${count} 期周榜数据！`)
       } catch (err: any) {
-        logger.warn(`同步 ${source} 历史数据失败: ${err.message || err}`)
+        const rawMsg = err?.message || String(err)
+        const errMsg = rawMsg.length > 100 ? `${rawMsg.slice(0, 100)}... (truncated)` : rawMsg
+        logger.warn(`同步 ${source} 历史数据失败: ${errMsg}`)
       }
     }
   }
